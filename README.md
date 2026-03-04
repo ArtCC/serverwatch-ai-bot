@@ -1,1 +1,1 @@
-# serverwatch-ai-bot
+# ServerWatch AI Bot
