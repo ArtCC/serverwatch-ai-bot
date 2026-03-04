@@ -1,0 +1,34 @@
+services:
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ghcr.io/artcc/serverwatch-ai-bot:local
+    container_name: serverwatch-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      GLANCES_BASE_URL: ${GLANCES_BASE_URL:-http://glances:61208/api/4}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+    depends_on:
+      glances:
+        condition: service_started
+    volumes:
+      - ./data:/app/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  glances:
+    image: nicolargo/glances:latest
+    container_name: serverwatch-glances
+    restart: unless-stopped
+    pid: host
+    environment:
+      GLANCES_OPT: "-w"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Uncomment to show host OS details instead of container OS details
+      # - /etc/os-release:/etc/os-release:ro
+    ports:
+      - "127.0.0.1:61208:61208"
