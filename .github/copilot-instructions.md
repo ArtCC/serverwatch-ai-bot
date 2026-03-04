@@ -1,9 +1,9 @@
 # Copilot instructions for this repository
 
-## Regla obligatoria de lectura previa
+## Mandatory pre-read rule
 
-Antes de proponer arquitectura, generar código o modificar configuración, debes leer y seguir:
+Before proposing architecture, generating code, or modifying configuration, you must read and follow:
 
 - `.github/bot_spec.md`
 
-Si hay conflicto, prevalece el contenido de `.github/bot_spec.md`.
+If there is a conflict, the content of `.github/bot_spec.md` prevails.

@@ -1,5 +1,5 @@
 # ServerWatch AI Bot
 
-## Especificación del bot
+## Bot specification
 
 - [.github/bot_spec.md](.github/bot_spec.md)
