@@ -6,7 +6,9 @@ from telegram import BotCommand, Update
 from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, ContextTypes
 
+from app.core import store
 from app.core.config import get_config
+from app.handlers import models as models_handler
 from app.handlers.start import start_handler
 from app.utils.i18n import load as load_locale
 from app.utils.i18n import t
@@ -25,7 +27,10 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 async def post_init(application: Application) -> None:
-    """Register bot commands after the Application is initialised."""
+    """Initialise DB and register bot commands after the Application is built."""
+    await store.init_db()
+    logger.info("Database initialised")
+
     await application.bot.set_my_commands(
         [
             BotCommand("start", "Start the bot and show the keyboard"),
@@ -52,6 +57,7 @@ def main() -> None:
     app = Application.builder().token(config.telegram_bot_token).post_init(post_init).build()
 
     app.add_handler(CommandHandler("start", start_handler))
+    models_handler.register(app)
     app.add_error_handler(error_handler)
 
     logger.info("Polling started")

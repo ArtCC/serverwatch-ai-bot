@@ -1,6 +1,30 @@
-# ServerWatch AI Bot
+# 🤖 ServerWatch AI Bot
+
+<p align="left">
+  <img src="https://github.com/ArtCC/serverwatch-ai-bot/blob/main/assets/serverwatch-ai-bot.png" alt="ServerWatch AI Bot" width="175"/>
+</p>
+
+[![Python Version](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![Docker](https://img.shields.io/badge/docker-ready-brightgreen.svg)](Dockerfile)
 
 A single-user Telegram bot that monitors your server and answers questions about it using a local LLM via [Ollama](https://ollama.com). Metrics are sourced from [Glances](https://nicolargo.github.io/glances/) running in the same Docker Compose stack.
+
+---
+
+## Implementation status
+
+| Area | Status |
+|---|---|
+| Project scaffold + Docker Compose | ✅ Done |
+| Config, auth, formatting, i18n | ✅ Done |
+| `/start` + persistent keyboard | ✅ Done |
+| SQLite persistence layer (`store.py`) | ✅ Done |
+| Ollama client + `/models` flow | ✅ Done |
+| Glances client + `/status` | 🔧 Pending |
+| `/alerts` threshold management | 🔧 Pending |
+| Free-text chat with LLM context | 🔧 Pending |
+| Alert engine (background scheduler) | 🔧 Pending |
 
 ---
 
@@ -237,6 +261,16 @@ Quick validation after publish:
 docker pull ghcr.io/artcc/serverwatch-ai-bot:latest
 docker run --rm --env-file .env ghcr.io/artcc/serverwatch-ai-bot:latest
 ```
+
+## 🎨 Bot Avatar
+
+You can use the official bot avatar for your own instance:
+
+<p align="left">
+  <img src="https://github.com/ArtCC/serverwatch-ai-bot/blob/main/assets/serverwatch-ai-bot.png" alt="ServerWatch AI Bot" width="200"/>
+</p>
+
+**Download**: [serverwatch-ai-bot.png](https://github.com/ArtCC/serverwatch-ai-bot/blob/main/assets/serverwatch-ai-bot.png)
 
 ---
 

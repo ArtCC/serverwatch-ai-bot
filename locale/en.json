@@ -41,7 +41,13 @@
     "header": "🤖 *Ollama Models*",
     "no_models": "ℹ️ No models found on the Ollama instance.",
     "model_line": "• `{name}`",
-    "unavailable": "❌ Could not reach Ollama. Is the service running?"
+    "unavailable": "❌ Could not reach Ollama. Is the service running?",
+    "confirm_change": "Set active model to `{model}`?",
+    "confirm_button": "✅ Confirm",
+    "cancel_button": "❌ Cancel",
+    "updated": "✅ Active model set to `{model}`.",
+    "cancelled": "ℹ️ Change cancelled.",
+    "already_active": "ℹ️ `{model}` is already the active model."
   },
   "chat": {
     "thinking": "⏳ Thinking…",
