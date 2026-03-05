@@ -20,14 +20,14 @@
 - [x] `app/handlers/start.py` — `/start` → personalised greeting with Telegram username + persistent keyboard
 
 ## Service layer
-- [ ] `app/services/glances.py` — async client for Glances API (CPU, RAM, disk, network, processes, Docker)
+- [x] `app/services/glances.py` — async client for Glances API (CPU, RAM, disk, network, processes, Docker)
 - [x] `app/services/ollama.py` — async client for Ollama (list models, chat/completions with injected context)
 - [x] `app/core/store.py` — SQLite with `aiosqlite` (conversation history, alert thresholds)
 
 ## Handlers
-- [ ] `app/handlers/chat.py` — free-text message → gather metrics → prompt with context → LLM response
-- [ ] `app/handlers/status.py` — `/status` / Status button → visual metrics summary
-- [ ] `app/handlers/alerts.py` — `/alerts` / Alerts button → view/edit thresholds with inline buttons + confirmation
+- [x] `app/handlers/chat.py` — free-text message → gather metrics → prompt with context → LLM response
+- [x] `app/handlers/status.py` — `/status` / Status button → visual metrics summary
+- [x] `app/handlers/alerts.py` — `/alerts` / Alerts button → view/edit thresholds with inline buttons + confirmation
 - [x] `app/handlers/models.py` — `/models` / Models button → active model selection flow
 
 ## Ollama model management

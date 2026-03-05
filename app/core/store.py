@@ -16,6 +16,9 @@ from app.core.config import get_config
 logger = logging.getLogger("serverwatch")
 
 _KEY_ACTIVE_MODEL = "active_model"
+_KEY_CPU_THRESHOLD = "threshold_cpu"
+_KEY_RAM_THRESHOLD = "threshold_ram"
+_KEY_DISK_THRESHOLD = "threshold_disk"
 
 
 def _db_path() -> str:
@@ -26,6 +29,7 @@ async def init_db() -> None:
     """Create schema and seed default values on first run."""
     path = _db_path()
     Path(path).parent.mkdir(parents=True, exist_ok=True)
+    cfg = get_config()
 
     async with aiosqlite.connect(path) as db:
         await db.execute(
@@ -38,41 +42,84 @@ async def init_db() -> None:
         )
         await db.commit()
 
-        async with db.execute(
-            "SELECT value FROM settings WHERE key = ?", (_KEY_ACTIVE_MODEL,)
-        ) as cursor:
-            row = await cursor.fetchone()
+        defaults = {
+            _KEY_ACTIVE_MODEL: cfg.ollama_model,
+            _KEY_CPU_THRESHOLD: str(cfg.alert_default_cpu_threshold),
+            _KEY_RAM_THRESHOLD: str(cfg.alert_default_ram_threshold),
+            _KEY_DISK_THRESHOLD: str(cfg.alert_default_disk_threshold),
+        }
+        for key, value in defaults.items():
+            async with db.execute("SELECT value FROM settings WHERE key = ?", (key,)) as cursor:
+                row = await cursor.fetchone()
+            if row is None:
+                await db.execute("INSERT INTO settings (key, value) VALUES (?, ?)", (key, value))
+                logger.info("Seeded %s = %s", key, value)
 
-        if row is None:
-            default_model = get_config().ollama_model
-            await db.execute(
-                "INSERT INTO settings (key, value) VALUES (?, ?)",
-                (_KEY_ACTIVE_MODEL, default_model),
-            )
-            await db.commit()
-            logger.info("Seeded active_model = %s", default_model)
+        await db.commit()
 
 
-async def get_active_model() -> str:
-    """Return the active Ollama model name stored in the DB."""
+async def _get(key: str) -> str | None:
     async with aiosqlite.connect(_db_path()) as db:
-        async with db.execute(
-            "SELECT value FROM settings WHERE key = ?", (_KEY_ACTIVE_MODEL,)
-        ) as cursor:
+        async with db.execute("SELECT value FROM settings WHERE key = ?", (key,)) as cursor:
             row = await cursor.fetchone()
-
-    if row is None:
-        return get_config().ollama_model
-    return str(row[0])
+    return str(row[0]) if row else None
 
 
-async def set_active_model(model: str) -> None:
-    """Persist the selected Ollama model to settings."""
+async def _set(key: str, value: str) -> None:
     async with aiosqlite.connect(_db_path()) as db:
         await db.execute(
             "INSERT INTO settings (key, value) VALUES (?, ?) "
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            (_KEY_ACTIVE_MODEL, model),
+            (key, value),
         )
         await db.commit()
+
+
+# ------------------------------------------------------------------
+# Active model
+# ------------------------------------------------------------------
+
+
+async def get_active_model() -> str:
+    value = await _get(_KEY_ACTIVE_MODEL)
+    return value if value is not None else get_config().ollama_model
+
+
+async def set_active_model(model: str) -> None:
+    await _set(_KEY_ACTIVE_MODEL, model)
     logger.info("Active model set to %s", model)
+
+
+# ------------------------------------------------------------------
+# Alert thresholds
+# ------------------------------------------------------------------
+
+
+async def get_threshold_cpu() -> float:
+    value = await _get(_KEY_CPU_THRESHOLD)
+    return float(value) if value is not None else get_config().alert_default_cpu_threshold
+
+
+async def get_threshold_ram() -> float:
+    value = await _get(_KEY_RAM_THRESHOLD)
+    return float(value) if value is not None else get_config().alert_default_ram_threshold
+
+
+async def get_threshold_disk() -> float:
+    value = await _get(_KEY_DISK_THRESHOLD)
+    return float(value) if value is not None else get_config().alert_default_disk_threshold
+
+
+async def set_threshold_cpu(value: float) -> None:
+    await _set(_KEY_CPU_THRESHOLD, str(value))
+    logger.info("CPU threshold set to %s", value)
+
+
+async def set_threshold_ram(value: float) -> None:
+    await _set(_KEY_RAM_THRESHOLD, str(value))
+    logger.info("RAM threshold set to %s", value)
+
+
+async def set_threshold_disk(value: float) -> None:
+    await _set(_KEY_DISK_THRESHOLD, str(value))
+    logger.info("Disk threshold set to %s", value)

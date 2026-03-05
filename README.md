@@ -21,9 +21,9 @@ A single-user Telegram bot that monitors your server and answers questions about
 | `/start` + persistent keyboard | ✅ Done |
 | SQLite persistence layer (`store.py`) | ✅ Done |
 | Ollama client + `/models` flow | ✅ Done |
-| Glances client + `/status` | 🔧 Pending |
-| `/alerts` threshold management | 🔧 Pending |
-| Free-text chat with LLM context | 🔧 Pending |
+| Glances client + `/status` | ✅ Done |
+| `/alerts` threshold management | ✅ Done |
+| Free-text chat with LLM context | ✅ Done |
 | Alert engine (background scheduler) | 🔧 Pending |
 
 ---
@@ -69,90 +69,31 @@ A `ReplyKeyboardMarkup` is always visible with four quick-access buttons:
 
 ---
 
-## Architecture
-
-```mermaid
-graph TD
-    TG["📱 Telegram User"]
-
-    subgraph Bot ["🐳 Docker — serverwatch-bot"]
-        MAIN["main.py\nApplication bootstrap\nsetMyCommands · error handler"]
-
-        subgraph Handlers
-            H_START["handlers/start.py\n/start"]
-            H_STATUS["handlers/status.py\n/status"]
-            H_ALERTS["handlers/alerts.py\n/alerts"]
-            H_MODELS["handlers/models.py\n/models"]
-            H_CHAT["handlers/chat.py\nfree-text → LLM"]
-        end
-
-        subgraph Core
-            CONFIG["core/config.py\nConfig dataclass"]
-            AUTH["core/auth.py\n@restricted"]
-            STORE["core/store.py\nSQLite — aiosqlite\nthresholds · active model"]
-        end
-
-        subgraph Services
-            GLANCES_SVC["services/glances.py\nasync Glances client"]
-            OLLAMA_SVC["services/ollama.py\nasync Ollama client"]
-            SCHEDULER["services/scheduler.py\nalert loop"]
-        end
-
-        subgraph Utils
-            FMT["utils/formatting.py\nℹ️ ✅ ⚠️ ❌"]
-            I18N["utils/i18n.py\nt() locale accessor"]
-        end
-    end
-
-    subgraph External ["External services"]
-        GLANCES_API["🐳 Docker — glances\nREST API :61208"]
-        OLLAMA_API["🖥️ Host — Ollama\nREST API :11434"]
-        DB[("💾 SQLite\n./data/serverwatch.db")]
-    end
-
-    TG -->|"command / message"| MAIN
-    MAIN --> AUTH
-    AUTH --> Handlers
-    H_CHAT --> GLANCES_SVC
-    H_CHAT --> OLLAMA_SVC
-    H_STATUS --> GLANCES_SVC
-    H_MODELS --> OLLAMA_SVC
-    H_MODELS --> STORE
-    H_ALERTS --> STORE
-    SCHEDULER --> GLANCES_SVC
-    SCHEDULER -->|"proactive alert"| TG
-    GLANCES_SVC --> GLANCES_API
-    OLLAMA_SVC --> OLLAMA_API
-    STORE --> DB
-    Handlers --> FMT
-    Handlers --> I18N
-    MAIN --> CONFIG
-```
-
 **Folder structure**
 
 ```
-app/
-  main.py               # Bootstrap, polling, setMyCommands, error handler
-  core/
-    config.py           # Typed Config dataclass — env vars
-    auth.py             # @restricted — single-user access control
-    store.py            # SQLite persistence — thresholds, active model
-  handlers/
-    start.py            # /start — greeting + persistent keyboard
-    status.py           # /status — metrics snapshot
-    alerts.py           # /alerts — threshold management + inline buttons
-    models.py           # /models — model listing and selection
-    chat.py             # Free-text → live context → LLM
-  services/
-    glances.py          # Async Glances REST API client
-    ollama.py           # Async Ollama API client
-    scheduler.py        # Background alert loop
-  utils/
-    formatting.py       # info() / success() / warning() / error()
-    i18n.py             # Locale loader and t() key accessor
-locale/
-  en.json               # All bot-facing strings
+.
+├── app/
+│   ├── main.py               # Bootstrap, polling, setMyCommands, error handler
+│   ├── core/
+│   │   ├── config.py         # Typed Config dataclass — env vars
+│   │   ├── auth.py           # @restricted — single-user access control
+│   │   └── store.py          # SQLite persistence — thresholds, active model
+│   ├── handlers/
+│   │   ├── start.py          # /start — greeting + persistent keyboard
+│   │   ├── help.py           # /help — help message
+│   │   ├── status.py         # /status — metrics snapshot
+│   │   ├── alerts.py         # /alerts — threshold management + inline buttons
+│   │   ├── models.py         # /models — model listing and selection
+│   │   └── chat.py           # Free-text → live context → LLM
+│   ├── services/
+│   │   ├── glances.py        # Async Glances REST API client
+│   │   └── ollama.py         # Async Ollama API client (list models + chat)
+│   └── utils/
+│       ├── formatting.py     # info() / success() / warning() / error()
+│       └── i18n.py           # Locale loader and t() key accessor
+└── locale/
+    └── en.json               # All bot-facing strings
 ```
 
 ---

@@ -8,7 +8,11 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 
 from app.core import store
 from app.core.config import get_config
+from app.handlers import alerts as alerts_handler
+from app.handlers import chat as chat_handler
+from app.handlers import help as help_handler
 from app.handlers import models as models_handler
+from app.handlers import status as status_handler
 from app.handlers.start import start_handler
 from app.utils.i18n import load as load_locale
 from app.utils.i18n import t
@@ -57,7 +61,12 @@ def main() -> None:
     app = Application.builder().token(config.telegram_bot_token).post_init(post_init).build()
 
     app.add_handler(CommandHandler("start", start_handler))
+    status_handler.register(app)
+    alerts_handler.register(app)
     models_handler.register(app)
+    help_handler.register(app)
+    # chat handler must be last — it catches all remaining text messages
+    chat_handler.register(app)
     app.add_error_handler(error_handler)
 
     logger.info("Polling started")

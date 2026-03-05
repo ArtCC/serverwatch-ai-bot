@@ -26,7 +26,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `.github/workflows/lint.yml` — install project dependencies before running mypy.
 - `.gitignore` / `.dockerignore` — exclude packaging artefacts (`*.egg-info`, `dist`, `build`).
 
-### Added — Ollama model management
+### Added — Service layer and remaining handlers
+- `app/services/glances.py` — async httpx client for Glances API v4: fetches CPU, RAM, disk, load, uptime, Docker containers and process list concurrently; exposes `ServerSnapshot` dataclass with `as_text()` for Markdown rendering.
+- `app/services/ollama.py` — added `chat(model, system, user_message)` using `/api/chat` (non-streaming, 120 s timeout).
+- `app/core/store.py` — extended with CPU / RAM / Disk threshold persistence (`get_threshold_*` / `set_threshold_*`); `init_db()` seeds all four default values from env on first run.
+- `app/handlers/status.py` — `/status` command and 📊 Status button: renders `ServerSnapshot.as_text()` with a 🔄 Refresh inline button.
+- `app/handlers/alerts.py` — `/alerts` command and 🔔 Alerts button: shows current thresholds with ✏️ Edit inline buttons; uses `ConversationHandler` to accept a new numeric value, then Confirm / Cancel before persisting.
+- `app/handlers/chat.py` — catches all free-text messages; fetches live metrics, injects them into the system prompt, queries Ollama with the active model, and edits the ⏳ placeholder with the LLM reply.
+- `app/handlers/help.py` — `/help` command and ❓ Help button.
+- `app/main.py` — registered status, alerts, models, help and chat handlers (chat last to avoid intercepting keyboard buttons).
 - `app/services/ollama.py` — async httpx client: `list_models()` fetches installed model names from `GET /api/tags`.
 - `app/core/store.py` — SQLite persistence layer via `aiosqlite`: `init_db()` creates schema and seeds `active_model` from `OLLAMA_MODEL` on first run; `get_active_model()` and `set_active_model()` typed helpers.
 - `app/handlers/models.py` — `/models` command and 🤖 Models button: lists all installed models with the active one marked ✅; inline buttons for each inactive model trigger a Confirm / Cancel flow before persisting the change.
