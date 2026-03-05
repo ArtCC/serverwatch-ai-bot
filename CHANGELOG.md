@@ -26,6 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `.github/workflows/lint.yml` — install project dependencies before running mypy.
 - `.gitignore` / `.dockerignore` — exclude packaging artefacts (`*.egg-info`, `dist`, `build`).
 
+### Added — Localisation (i18n)
+- `locale/es.json` — full Spanish (Spain) translation of all bot-facing strings.
+- `app/utils/i18n.py` — added `detect_and_load(telegram_lang, fallback)`: resolves the best available locale from the Telegram `language_code` (full code → base language → `BOT_LOCALE`); no-op if the locale is already loaded.
+- `app/handlers/start.py` — calls `detect_and_load()` on every `/start` so the bot switches language automatically based on the user's Telegram settings.
+
 ### Added — Service layer and remaining handlers
 - `app/services/glances.py` — async httpx client for Glances API v4: fetches CPU, RAM, disk, load, uptime, Docker containers and process list concurrently; exposes `ServerSnapshot` dataclass with `as_text()` for Markdown rendering.
 - `app/services/ollama.py` — added `chat(model, system, user_message)` using `/api/chat` (non-streaming, 120 s timeout).

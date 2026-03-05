@@ -1,0 +1,66 @@
+{
+  "keyboard": {
+    "status": "📊 Estado",
+    "alerts": "🔔 Alertas",
+    "models": "🤖 Modelos",
+    "help": "❓ Ayuda"
+  },
+  "start": {
+    "welcome": "👋 ¡Hola, *{name}*! Bienvenido a *ServerWatch*.\n\nMonitorizo tu servidor y respondo preguntas sobre él usando IA.\n\nUsa los botones de abajo o escribe lo que quieras."
+  },
+  "help": {
+    "text": "ℹ️ *ServerWatch — Ayuda*\n\n*Comandos*\n/status — Métricas actuales del servidor\n/alerts — Ver y configurar umbrales de alerta\n/models — Modelos de Ollama disponibles\n/help — Mostrar este mensaje\n\n*Cómo funciona*\nEscribe una pregunta en lenguaje natural y recopilaré métricas en tiempo real para responderte usando tu LLM local.\n\n*Ejemplos de preguntas*\n• ¿Qué proceso está consumiendo más CPU?\n• ¿Cuánto espacio libre queda en disco?\n• ¿El servidor está funcionando bien ahora mismo?"
+  },
+  "status": {
+    "header": "📊 *Estado del servidor*",
+    "cpu": "CPU",
+    "ram": "RAM",
+    "disk": "Disco",
+    "load": "Carga media",
+    "uptime": "Tiempo activo",
+    "docker": "Docker",
+    "refresh_button": "🔄 Actualizar",
+    "unavailable": "❌ No se han podido obtener las métricas. ¿Está Glances en marcha?"
+  },
+  "alerts": {
+    "header": "🔔 *Umbrales de alerta*",
+    "cpu_label": "CPU",
+    "ram_label": "RAM",
+    "disk_label": "Disco",
+    "threshold_line": "{metric}: *{value}%*",
+    "edit_button": "✏️ Editar {metric}",
+    "prompt_new_value": "Introduce el nuevo umbral para *{metric}* (0-100):",
+    "invalid_value": "❌ Valor no válido. Introduce un número entre 0 y 100.",
+    "confirm_change": "¿Establecer el umbral de *{metric}* al *{value}%*?",
+    "confirm_button": "✅ Confirmar",
+    "cancel_button": "❌ Cancelar",
+    "updated": "✅ Umbral de *{metric}* actualizado al *{value}%*.",
+    "cancelled": "ℹ️ Cambio cancelado."
+  },
+  "models": {
+    "header": "🤖 *Modelos de Ollama*",
+    "no_models": "ℹ️ No se han encontrado modelos en la instancia de Ollama.",
+    "model_line": "• `{name}`",
+    "unavailable": "❌ No se puede conectar con Ollama. ¿Está el servicio en marcha?",
+    "confirm_change": "¿Establecer `{model}` como modelo activo?",
+    "confirm_button": "✅ Confirmar",
+    "cancel_button": "❌ Cancelar",
+    "updated": "✅ Modelo activo establecido: `{model}`.",
+    "cancelled": "ℹ️ Cambio cancelado.",
+    "already_active": "ℹ️ `{model}` ya es el modelo activo."
+  },
+  "chat": {
+    "thinking": "⏳ Pensando…",
+    "error": "❌ Ha ocurrido un error al generar la respuesta. Por favor, inténtalo de nuevo."
+  },
+  "errors": {
+    "unauthorized": "⛔ No autorizado.",
+    "general": "❌ Se ha producido un error inesperado. Por favor, inténtalo más tarde.",
+    "service_unavailable": "⚠️ Uno o más servicios no están disponibles. Comprueba que Glances y Ollama están en marcha."
+  },
+  "alerts_notification": {
+    "cpu": "⚠️ *Alerta de CPU*: uso al *{value}%* (umbral: {threshold}%)",
+    "ram": "⚠️ *Alerta de RAM*: uso al *{value}%* (umbral: {threshold}%)",
+    "disk": "⚠️ *Alerta de disco*: uso al *{value}%* (umbral: {threshold}%)"
+  }
+}

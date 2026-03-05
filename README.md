@@ -4,7 +4,7 @@
   <img src="https://github.com/ArtCC/serverwatch-ai-bot/blob/main/assets/serverwatch-ai-bot.png" alt="ServerWatch AI Bot" width="175"/>
 </p>
 
-[![Python Version](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Python Version](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/docker-ready-brightgreen.svg)](Dockerfile)
 
@@ -69,6 +69,19 @@ A `ReplyKeyboardMarkup` is always visible with four quick-access buttons:
 
 ---
 
+## Localisation
+
+The bot detects the user's language automatically from Telegram on `/start`. If no matching locale file exists, it falls back to `BOT_LOCALE`.
+
+| File | Language |
+|---|---|
+| `locale/en.json` | English (default) |
+| `locale/es.json` | Spanish |
+
+To add a new language, create `locale/<lang>.json` with the same keys as `en.json` and set `BOT_LOCALE=<lang>` as the default fallback.
+
+---
+
 **Folder structure**
 
 ```
@@ -93,7 +106,8 @@ A `ReplyKeyboardMarkup` is always visible with four quick-access buttons:
 │       ├── formatting.py     # info() / success() / warning() / error()
 │       └── i18n.py           # Locale loader and t() key accessor
 └── locale/
-    └── en.json               # All bot-facing strings
+    ├── en.json               # English (default)
+    └── es.json               # Spanish
 ```
 
 ---
@@ -114,7 +128,7 @@ cp .env.example .env
 | `OLLAMA_MODEL` | | `llama3.2:3b` | Default model used on first start |
 | `GLANCES_BASE_URL` | | `http://glances:61208/api/4` | Glances REST API base URL |
 | `BOT_LOG_LEVEL` | | `INFO` | Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
-| `BOT_LOCALE` | | `en` | Bot UI locale (must match a file in `locale/`) |
+| `BOT_LOCALE` | | `en` | Fallback locale if Telegram language is not available (must match a file in `locale/`) |
 | `TZ` | | `UTC` | Container timezone |
 | `SQLITE_PATH` | | `/app/data/serverwatch.db` | SQLite database path (inside container) |
 | `ALERT_CHECK_INTERVAL_SECONDS` | | `60` | How often the alert engine checks metrics |

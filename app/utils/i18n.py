@@ -30,6 +30,29 @@ def load(locale: str = "en") -> None:
     _loaded_locale = locale
 
 
+def detect_and_load(telegram_lang: str | None, fallback: str) -> None:
+    """Detect the best locale from a Telegram language_code and load it.
+
+    Telegram sends codes like "es", "en", "es-ES", "pt-BR". We try the
+    full code first, then the base language, then *fallback*.
+    If the same locale is already loaded, nothing happens.
+    """
+    candidates: list[str] = []
+    if telegram_lang:
+        candidates.append(telegram_lang.lower().replace("-", "_"))
+        base = telegram_lang.split("-")[0].lower()
+        if base not in candidates:
+            candidates.append(base)
+    candidates.append(fallback)
+
+    for candidate in candidates:
+        if candidate == _loaded_locale:
+            return
+        if (_LOCALE_DIR / f"{candidate}.json").exists():
+            load(candidate)
+            return
+
+
 def t(key: str, **kwargs: Any) -> str:
     """Return the localised string for *key* (dot-separated path).
 
