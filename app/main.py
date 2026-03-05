@@ -1,61 +1,66 @@
-import json
-import logging
-import os
-import time
-from typing import Any
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from __future__ import annotations
 
-logging.basicConfig(
-    level=getattr(logging, os.getenv("BOT_LOG_LEVEL", "INFO").upper(), logging.INFO),
-    format="%(asctime)s | %(levelname)s | %(message)s",
-)
+import logging
+
+from telegram import BotCommand, Update
+from telegram.constants import ParseMode
+from telegram.ext import Application, CommandHandler, ContextTypes
+
+from app.core.config import get_config
+from app.handlers.start import start_handler
+from app.utils.i18n import load as load_locale
+from app.utils.i18n import t
+
 logger = logging.getLogger("serverwatch")
 
 
-def read_json(url: str, timeout: int = 10) -> dict[str, Any]:
-    request = Request(url, headers={"Accept": "application/json"})
-    with urlopen(request, timeout=timeout) as response:
-        payload = response.read().decode("utf-8")
-        return json.loads(payload)
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Global error handler — logs the exception and replies with a friendly message."""
+    logger.exception("Unhandled exception", exc_info=context.error)
+    if isinstance(update, Update) and update.effective_message:
+        await update.effective_message.reply_text(
+            t("errors.general"),
+            parse_mode=ParseMode.MARKDOWN,
+        )
 
 
-def check_glances(base_url: str) -> None:
-    now_url = f"{base_url.rstrip('/')}/quicklook"
-    payload = read_json(now_url)
-    cpu = payload.get("cpu")
-    mem = payload.get("mem")
-    logger.info("Glances OK | cpu=%s | mem=%s", cpu, mem)
-
-
-def check_ollama(base_url: str) -> None:
-    tags_url = f"{base_url.rstrip('/')}/api/tags"
-    payload = read_json(tags_url)
-    models_count = len(payload.get("models", []))
-    logger.info("Ollama OK | models=%s", models_count)
+async def post_init(application: Application) -> None:
+    """Register bot commands after the Application is initialised."""
+    await application.bot.set_my_commands(
+        [
+            BotCommand("start", "Start the bot and show the keyboard"),
+            BotCommand("status", "Current server metrics"),
+            BotCommand("alerts", "View and configure alert thresholds"),
+            BotCommand("models", "List and select Ollama models"),
+            BotCommand("help", "Show help message"),
+        ]
+    )
+    logger.info("Bot commands registered")
 
 
 def main() -> None:
-    glances_url = os.getenv("GLANCES_BASE_URL", "http://glances:61208/api/4")
-    ollama_url = os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
-    interval = int(os.getenv("BOOTSTRAP_CHECK_INTERVAL_SECONDS", "60"))
+    config = get_config()
 
-    logger.info("ServerWatch bootstrap started")
-    logger.info("GLANCES_BASE_URL=%s", glances_url)
-    logger.info("OLLAMA_BASE_URL=%s", ollama_url)
+    logging.basicConfig(
+        level=getattr(logging, config.bot_log_level.upper(), logging.INFO),
+        format="%(asctime)s | %(levelname)s | %(message)s",
+    )
 
-    while True:
-        try:
-            check_glances(glances_url)
-        except (HTTPError, URLError, TimeoutError, ValueError, json.JSONDecodeError) as error:
-            logger.warning("Glances check failed: %s", error)
+    load_locale(config.bot_locale)
+    logger.info("ServerWatch AI Bot starting — locale=%s", config.bot_locale)
 
-        try:
-            check_ollama(ollama_url)
-        except (HTTPError, URLError, TimeoutError, ValueError, json.JSONDecodeError) as error:
-            logger.warning("Ollama check failed: %s", error)
+    app = (
+        Application.builder()
+        .token(config.telegram_bot_token)
+        .post_init(post_init)
+        .build()
+    )
 
-        time.sleep(interval)
+    app.add_handler(CommandHandler("start", start_handler))
+    app.add_error_handler(error_handler)
+
+    logger.info("Polling started")
+    app.run_polling(drop_pending_updates=True)
 
 
 if __name__ == "__main__":

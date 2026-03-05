@@ -22,8 +22,10 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install quality tools
-        run: python -m pip install --upgrade ruff mypy
+      - name: Install quality tools and dependencies
+        run: |
+          python -m pip install --upgrade pip ruff mypy
+          pip install -e .
 
       - name: Ruff check
         run: python -m ruff check .

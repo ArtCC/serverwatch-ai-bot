@@ -19,3 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `.env.example` updated with `BOT_LOCALE` variable.
 - Docker Compose stack with `bot` and `glances` services.
 - CI workflows: lint (`ruff` + `mypy`) and Docker image publish to GHCR.
+- `app/main.py` — `Application` bootstrap with polling, `setMyCommands` registration and global error handler.
+- `app/handlers/start.py` — `/start` command with personalised greeting (Telegram first name) and persistent `ReplyKeyboardMarkup` (Status, Alerts, Models, Help).
+- `app/__init__.py` — added to fix mypy module resolution.
+- `pyproject.toml` — added `[tool.ruff.lint.isort] known-first-party` and `[tool.setuptools.packages.find]`.
+- `.github/workflows/lint.yml` — install project dependencies before running mypy.
+- `.gitignore` / `.dockerignore` — exclude packaging artefacts (`*.egg-info`, `dist`, `build`).

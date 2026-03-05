@@ -1,49 +1,49 @@
 # MVP Task List — ServerWatch AI Bot
 
-## Dependencias y configuración
-- [x] Añadir dependencias en `pyproject.toml`: `python-telegram-bot`, `httpx`, `aiosqlite`
-- [x] Actualizar `Dockerfile` para instalar dependencias
+## Dependencies and configuration
+- [x] Add dependencies to `pyproject.toml`: `python-telegram-bot`, `httpx`, `aiosqlite`
+- [x] Update `Dockerfile` to install dependencies
 
-## Arquitectura base
-- [x] Crear estructura de carpetas: `app/handlers/`, `app/services/`, `app/core/`, `app/utils/`
-- [x] `app/core/config.py` — carga y validación de variables de entorno
-- [x] `app/utils/formatting.py` — helper de mensajes con ℹ️ ✅ ⚠️ ❌
-- [x] `app/core/auth.py` — middleware que bloquea mensajes de usuarios distintos a `TELEGRAM_CHAT_ID`
-- [x] `locale/en.json` — centralizar todos los textos del bot
-- [x] `app/utils/i18n.py` — helper de carga y acceso a textos por clave (soporte multi-idioma)
+## Base architecture
+- [x] Create folder structure: `app/handlers/`, `app/services/`, `app/core/`, `app/utils/`
+- [x] `app/core/config.py` — environment variable loading and validation
+- [x] `app/utils/formatting.py` — message helpers with ℹ️ ✅ ⚠️ ❌
+- [x] `app/core/auth.py` — middleware to block messages from users other than `TELEGRAM_CHAT_ID`
+- [x] `locale/en.json` — centralise all bot texts
+- [x] `app/utils/i18n.py` — locale loader and key accessor with interpolation support (multi-language)
 
-## Capa de arranque del bot — primer despliegue validable
-- [ ] `app/main.py` — refactor: inicializar `Application` de `python-telegram-bot`
-- [ ] Registrar `setMyCommands`
-- [ ] `ReplyKeyboardMarkup` persistente (botones: Estado, Alertas, Modelos, Ayuda)
-- [ ] Handler global de errores con respuesta amigable
-- [ ] `app/handlers/start.py` — `/start` → saludo personalizado con el nombre de usuario de Telegram + teclado persistente
+## Bot bootstrap — first deployable milestone
+- [x] `app/main.py` — refactor: initialise `Application` from `python-telegram-bot`
+- [x] Register `setMyCommands`
+- [x] Persistent `ReplyKeyboardMarkup` (buttons: Status, Alerts, Models, Help)
+- [x] Global error handler with friendly response
+- [x] `app/handlers/start.py` — `/start` → personalised greeting with Telegram username + persistent keyboard
 
-## Capa de servicios
-- [ ] `app/services/glances.py` — cliente async para Glances API (CPU, RAM, disco, red, procesos, Docker)
-- [ ] `app/services/ollama.py` — cliente async para Ollama (listar modelos, chat/completions con contexto inyectado)
-- [ ] `app/core/store.py` — SQLite con `aiosqlite` (historial de conversación, configuración de umbrales)
+## Service layer
+- [ ] `app/services/glances.py` — async client for Glances API (CPU, RAM, disk, network, processes, Docker)
+- [ ] `app/services/ollama.py` — async client for Ollama (list models, chat/completions with injected context)
+- [ ] `app/core/store.py` — SQLite with `aiosqlite` (conversation history, alert thresholds)
 
 ## Handlers
-- [ ] `app/handlers/chat.py` — mensaje de texto libre → recoge métricas → prompt con contexto → respuesta LLM
-- [ ] `app/handlers/status.py` — `/status` / botón Estado → resumen visual de métricas
-- [ ] `app/handlers/alerts.py` — `/alerts` / botón Alertas → ver/editar umbrales con inline buttons + confirmación
-- [ ] `app/handlers/models.py` — `/models` / botón Modelos → flujo de selección de modelo activo
+- [ ] `app/handlers/chat.py` — free-text message → gather metrics → prompt with context → LLM response
+- [ ] `app/handlers/status.py` — `/status` / Status button → visual metrics summary
+- [ ] `app/handlers/alerts.py` — `/alerts` / Alerts button → view/edit thresholds with inline buttons + confirmation
+- [ ] `app/handlers/models.py` — `/models` / Models button → active model selection flow
 
-## Gestión de modelo Ollama
-- [ ] `app/core/store.py` — persistir en SQLite el modelo activo seleccionado por el usuario
-- [ ] Al arrancar, inicializar el modelo activo con el valor de `OLLAMA_MODEL` si no hay ninguno guardado en BD
-- [ ] `/models` muestra la lista de modelos instalados con el modelo activo marcado (✅)
-- [ ] Inline buttons para seleccionar cualquier modelo de la lista
-- [ ] Confirmación antes de cambiar de modelo activo
-- [ ] Todos los prompts a Ollama usan el modelo activo almacenado en BD
+## Ollama model management
+- [ ] `app/core/store.py` — persist the active model selected by the user in SQLite
+- [ ] On startup, initialise the active model from `OLLAMA_MODEL` if none is saved in the DB
+- [ ] `/models` shows the list of installed models with the active one marked (✅)
+- [ ] Inline buttons to select any model from the list
+- [ ] Confirmation before changing the active model
+- [ ] All Ollama prompts use the active model stored in the DB
 
-## Motor de alertas
-- [ ] `app/services/scheduler.py` — loop async que comprueba métricas cada `ALERT_CHECK_INTERVAL_SECONDS`
-- [ ] Lógica de cooldown (`ALERT_COOLDOWN_SECONDS`) para no spamear alertas repetidas
-- [ ] Envío proactivo de alerta al chat cuando se supera un umbral
+## Alert engine
+- [ ] `app/services/scheduler.py` — async loop that checks metrics every `ALERT_CHECK_INTERVAL_SECONDS`
+- [ ] Cooldown logic (`ALERT_COOLDOWN_SECONDS`) to avoid spamming repeated alerts
+- [ ] Proactive alert message to the chat when a threshold is exceeded
 
-## Documentación (Siempre hay que ir actualizando)
+## Documentation (keep updated as we go)
 - [ ] `CHANGELOG.md`
 - [ ] `CONTRIBUTING.md`
 - [ ] `README.md`

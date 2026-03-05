@@ -1,91 +1,257 @@
 # ServerWatch AI Bot
 
-## Bot specification
+A single-user Telegram bot that monitors your server and answers questions about it using a local LLM via [Ollama](https://ollama.com). Metrics are sourced from [Glances](https://nicolargo.github.io/glances/) running in the same Docker Compose stack.
 
-- [.github/bot_spec.md](.github/bot_spec.md)
+---
 
-## Deployment base (single-user MVP)
+## How it works
 
-This repository is configured for a single-user deployment:
+1. You send a message or command from Telegram.
+2. The bot collects live metrics from Glances (CPU, RAM, disk, processes, Docker…).
+3. That context is injected into a prompt sent to your local LLM via Ollama.
+4. The LLM replies in natural language directly in your Telegram chat.
 
-- `glances` runs inside the same Docker Compose stack.
-- `ollama` is external and consumed via API URL.
-- no Glances username/password is used in this MVP.
+Commands and persistent keyboard buttons are shortcuts for common actions. Everything else is free-text conversation with the LLM.
+
+---
+
+## Commands
+
+| Command | Description |
+|---|---|
+| `/start` | Start the bot and show the persistent keyboard |
+| `/status` | Current server metrics snapshot |
+| `/alerts` | View and configure alert thresholds |
+| `/models` | List installed Ollama models and select the active one |
+| `/help` | Show help message |
+
+---
+
+## Persistent keyboard
+
+A `ReplyKeyboardMarkup` is always visible with four quick-access buttons:
+
+```
+[ 📊 Status  ] [ 🔔 Alerts ]
+[ 🤖 Models  ] [ ❓ Help   ]
+```
+
+---
+
+## Inline flows
+
+- **Model selection** (`/models`): lists all models installed in Ollama. The active model is marked with ✅. Tap any model to switch — a confirmation step is required before the change takes effect.
+- **Alert thresholds** (`/alerts`): shows current CPU / RAM / disk thresholds with inline Edit buttons. Every threshold change requires confirmation before saving.
+
+---
+
+## Architecture
+
+```mermaid
+graph TD
+    TG["📱 Telegram User"]
+
+    subgraph Bot ["🐳 Docker — serverwatch-bot"]
+        MAIN["main.py\nApplication bootstrap\nsetMyCommands · error handler"]
+
+        subgraph Handlers
+            H_START["handlers/start.py\n/start"]
+            H_STATUS["handlers/status.py\n/status"]
+            H_ALERTS["handlers/alerts.py\n/alerts"]
+            H_MODELS["handlers/models.py\n/models"]
+            H_CHAT["handlers/chat.py\nfree-text → LLM"]
+        end
+
+        subgraph Core
+            CONFIG["core/config.py\nConfig dataclass"]
+            AUTH["core/auth.py\n@restricted"]
+            STORE["core/store.py\nSQLite — aiosqlite\nthresholds · active model"]
+        end
+
+        subgraph Services
+            GLANCES_SVC["services/glances.py\nasync Glances client"]
+            OLLAMA_SVC["services/ollama.py\nasync Ollama client"]
+            SCHEDULER["services/scheduler.py\nalert loop"]
+        end
+
+        subgraph Utils
+            FMT["utils/formatting.py\nℹ️ ✅ ⚠️ ❌"]
+            I18N["utils/i18n.py\nt() locale accessor"]
+        end
+    end
+
+    subgraph External ["External services"]
+        GLANCES_API["🐳 Docker — glances\nREST API :61208"]
+        OLLAMA_API["🖥️ Host — Ollama\nREST API :11434"]
+        DB[("💾 SQLite\n./data/serverwatch.db")]
+    end
+
+    TG -->|"command / message"| MAIN
+    MAIN --> AUTH
+    AUTH --> Handlers
+    H_CHAT --> GLANCES_SVC
+    H_CHAT --> OLLAMA_SVC
+    H_STATUS --> GLANCES_SVC
+    H_MODELS --> OLLAMA_SVC
+    H_MODELS --> STORE
+    H_ALERTS --> STORE
+    SCHEDULER --> GLANCES_SVC
+    SCHEDULER -->|"proactive alert"| TG
+    GLANCES_SVC --> GLANCES_API
+    OLLAMA_SVC --> OLLAMA_API
+    STORE --> DB
+    Handlers --> FMT
+    Handlers --> I18N
+    MAIN --> CONFIG
+```
+
+**Folder structure**
+
+```
+app/
+  main.py               # Bootstrap, polling, setMyCommands, error handler
+  core/
+    config.py           # Typed Config dataclass — env vars
+    auth.py             # @restricted — single-user access control
+    store.py            # SQLite persistence — thresholds, active model
+  handlers/
+    start.py            # /start — greeting + persistent keyboard
+    status.py           # /status — metrics snapshot
+    alerts.py           # /alerts — threshold management + inline buttons
+    models.py           # /models — model listing and selection
+    chat.py             # Free-text → live context → LLM
+  services/
+    glances.py          # Async Glances REST API client
+    ollama.py           # Async Ollama API client
+    scheduler.py        # Background alert loop
+  utils/
+    formatting.py       # info() / success() / warning() / error()
+    i18n.py             # Locale loader and t() key accessor
+locale/
+  en.json               # All bot-facing strings
+```
+
+---
 
 ## Environment variables
 
-Create your local env file from the example:
+Copy the example file and fill in the required values:
 
 ```bash
 cp .env.example .env
 ```
 
-Required values to set:
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `TELEGRAM_BOT_TOKEN` | ✅ | — | Token from [@BotFather](https://t.me/BotFather) |
+| `TELEGRAM_CHAT_ID` | ✅ | — | Your personal chat ID (single-user) |
+| `OLLAMA_BASE_URL` | | `http://host.docker.internal:11434` | Ollama API base URL |
+| `OLLAMA_MODEL` | | `llama3.2:3b` | Default model used on first start |
+| `GLANCES_BASE_URL` | | `http://glances:61208/api/4` | Glances REST API base URL |
+| `BOT_LOG_LEVEL` | | `INFO` | Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
+| `BOT_LOCALE` | | `en` | Bot UI locale (must match a file in `locale/`) |
+| `TZ` | | `UTC` | Container timezone |
+| `SQLITE_PATH` | | `/app/data/serverwatch.db` | SQLite database path (inside container) |
+| `ALERT_CHECK_INTERVAL_SECONDS` | | `60` | How often the alert engine checks metrics |
+| `ALERT_COOLDOWN_SECONDS` | | `300` | Minimum time between repeated alerts for the same metric |
+| `ALERT_DEFAULT_CPU_THRESHOLD` | | `85` | Default CPU alert threshold (%) |
+| `ALERT_DEFAULT_RAM_THRESHOLD` | | `85` | Default RAM alert threshold (%) |
+| `ALERT_DEFAULT_DISK_THRESHOLD` | | `90` | Default disk alert threshold (%) |
 
-- `TELEGRAM_BOT_TOKEN`
-- `TELEGRAM_CHAT_ID`
-- `OLLAMA_BASE_URL`
-- `OLLAMA_MODEL`
+---
 
-Default internal Glances API URL in stack:
+## Deployment
 
-- `GLANCES_BASE_URL=http://glances:61208/api/4`
-
-## Run with Docker Compose
+### Local — Docker Compose
 
 ```bash
+cp .env.example .env
+# Edit .env with your TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID
 docker compose up -d --build
 ```
 
-Check service status:
+Check status:
 
 ```bash
 docker compose ps
 docker compose logs -f bot
 ```
 
-Glances web UI is bound to localhost:
+Glances web UI (localhost only):
 
 - http://127.0.0.1:61208
 
-## Package publishing (GitHub)
+### Portainer
 
-Workflow file:
+Deploy as a stack using the `docker-compose.yml` from this repository. Define all environment variables directly in the Portainer stack UI — no `.env` file is needed.
 
-- `.github/workflows/package.yml`
+---
 
-On every push to `main`, GitHub Actions builds and publishes the Docker image to:
+## Data persistence
+
+| Host path | Container path | Contents |
+|---|---|---|
+| `./data` | `/app/data` | SQLite database |
+
+---
+
+## Development setup
+
+Requirements: Python 3.12+, Docker, Docker Compose.
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -e .
+pip install ruff mypy
+```
+
+### Lint and type-check
+
+```bash
+ruff check .
+ruff format --check .
+mypy app
+```
+
+CI runs the same checks automatically on every push via `.github/workflows/lint.yml`.
+
+---
+
+## CI / CD
+
+| Workflow | Trigger | Action |
+|---|---|---|
+| `lint.yml` | Push / PR | `ruff` check + format + `mypy` |
+| `package.yml` | Push to `main` | Build and publish Docker image to GHCR |
+
+Published image tags:
 
 - `ghcr.io/artcc/serverwatch-ai-bot:latest`
 - `ghcr.io/artcc/serverwatch-ai-bot:sha-<commit>`
 
-## Quick package validation
-
-After a push to `main` and successful workflow:
+Quick validation after publish:
 
 ```bash
 docker pull ghcr.io/artcc/serverwatch-ai-bot:latest
 docker run --rm --env-file .env ghcr.io/artcc/serverwatch-ai-bot:latest
 ```
 
-## Lint
+---
 
-Local run (inside this project):
+## Contributing
 
-```bash
-./.venv/bin/python -m ruff check .
-./.venv/bin/python -m ruff format --check .
-./.venv/bin/python -m mypy app
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-Optional first-time setup (if `.venv` does not exist yet):
+## Changelog
 
-```bash
-python3 -m venv .venv
-./.venv/bin/python -m pip install --upgrade pip ruff mypy
-```
+See [CHANGELOG.md](CHANGELOG.md).
 
-CI run:
+## License
 
-- `.github/workflows/lint.yml`
-- Runs real code quality checks with `ruff` and `mypy` on GitHub Actions.
+[Apache License 2.0](LICENSE)
+
+## Author
+
+Arturo Carretero Calvo — [@artcc](https://github.com/artcc)
