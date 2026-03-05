@@ -72,7 +72,10 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if update.effective_chat:
         await update.effective_chat.send_action(ChatAction.TYPING)
 
-    placeholder = await message.reply_text(t("chat.thinking", locale=locale), parse_mode=ParseMode.MARKDOWN)
+    placeholder = await message.reply_text(
+        t("chat.thinking", locale=locale),
+        parse_mode=ParseMode.MARKDOWN,
+    )
 
     # Fetch metrics (non-blocking failure)
     system_prompt: str

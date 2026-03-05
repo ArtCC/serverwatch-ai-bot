@@ -11,8 +11,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 _strings: dict[str, Any] = {}
 _loaded_locale: str = ""

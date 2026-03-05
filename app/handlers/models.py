@@ -91,7 +91,11 @@ def _resolve_model_token(context: ContextTypes.DEFAULT_TYPE, token: str) -> str 
 # ---------------------------------------------------------------------------
 
 
-async def _show_models(update: Update, context: ContextTypes.DEFAULT_TYPE, edit: bool = False) -> None:
+async def _show_models(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    edit: bool = False,
+) -> None:
     """Fetch models and active model, then send or edit the message."""
     locale = locale_from_update(update, fallback=get_config().bot_locale)
 

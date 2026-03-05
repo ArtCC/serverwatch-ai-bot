@@ -17,8 +17,7 @@ from app.handlers import models as models_handler
 from app.handlers import status as status_handler
 from app.handlers.start import start_handler
 from app.utils.i18n import load as load_locale
-from app.utils.i18n import locale_from_update
-from app.utils.i18n import t
+from app.utils.i18n import locale_from_update, t
 
 logger = logging.getLogger("serverwatch")
 

@@ -32,7 +32,14 @@ _CB_REFRESH = "status_refresh"
 
 def _refresh_keyboard(locale: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
-        [[InlineKeyboardButton(t("status.refresh_button", locale=locale), callback_data=_CB_REFRESH)]]
+        [
+            [
+                InlineKeyboardButton(
+                    t("status.refresh_button", locale=locale),
+                    callback_data=_CB_REFRESH,
+                )
+            ]
+        ]
     )
 
 

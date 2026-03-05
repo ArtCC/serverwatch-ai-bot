@@ -36,8 +36,8 @@ def restricted(func: Callable[..., Any]) -> Callable[..., Any]:
             chat_id = chat.id if chat else "unknown"
             logger.warning("Unauthorized access attempt from chat_id=%s", chat_id)
             if update.effective_message:
-                from app.utils.i18n import t  # local import to avoid circular deps
-                from app.utils.i18n import locale_from_update
+                # Local import avoids circular deps during startup.
+                from app.utils.i18n import locale_from_update, t
 
                 await update.effective_message.reply_text(
                     t(
