@@ -8,6 +8,7 @@ Flow:
 from __future__ import annotations
 
 import logging
+import re
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatAction, ParseMode
@@ -84,7 +85,7 @@ def register(app: Application) -> None:
     app.add_handler(CommandHandler("status", status_command))
     app.add_handler(
         MessageHandler(
-            filters.TEXT & filters.Regex(r"^📊 Status$") & ~filters.COMMAND,
+            filters.TEXT & filters.Regex(f"^{re.escape(t('keyboard.status'))}$") & ~filters.COMMAND,
             status_button,
         )
     )

@@ -11,6 +11,7 @@ Flow:
 from __future__ import annotations
 
 import logging
+import re
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatAction, ParseMode
@@ -194,7 +195,7 @@ def register(app: Application) -> None:
     app.add_handler(CommandHandler("models", models_command))
     app.add_handler(
         MessageHandler(
-            filters.TEXT & filters.Regex(r"^🤖 Models$") & ~filters.COMMAND,
+            filters.TEXT & filters.Regex(f"^{re.escape(t('keyboard.models'))}$") & ~filters.COMMAND,
             models_button,
         )
     )
