@@ -49,12 +49,7 @@ def main() -> None:
     load_locale(config.bot_locale)
     logger.info("ServerWatch AI Bot starting — locale=%s", config.bot_locale)
 
-    app = (
-        Application.builder()
-        .token(config.telegram_bot_token)
-        .post_init(post_init)
-        .build()
-    )
+    app = Application.builder().token(config.telegram_bot_token).post_init(post_init).build()
 
     app.add_handler(CommandHandler("start", start_handler))
     app.add_error_handler(error_handler)
