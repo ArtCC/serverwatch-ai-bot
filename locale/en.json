@@ -1,0 +1,60 @@
+{
+  "keyboard": {
+    "status": "📊 Status",
+    "alerts": "🔔 Alerts",
+    "models": "🤖 Models",
+    "help": "❓ Help"
+  },
+  "start": {
+    "welcome": "👋 Welcome to *ServerWatch*!\n\nI monitor your server and answer questions about it using AI.\n\nUse the buttons below or just type anything."
+  },
+  "help": {
+    "text": "ℹ️ *ServerWatch — Help*\n\n*Commands*\n/status — Current server metrics\n/alerts — View and configure alert thresholds\n/models — Available Ollama models\n/help — Show this message\n\n*How it works*\nJust type a question in natural language and I will gather live metrics and answer using your local LLM.\n\n*Example questions*\n• What process is using the most CPU?\n• How much free disk space is left?\n• Is the server doing OK right now?"
+  },
+  "status": {
+    "header": "📊 *Server Status*",
+    "cpu": "CPU",
+    "ram": "RAM",
+    "disk": "Disk",
+    "load": "Load avg",
+    "uptime": "Uptime",
+    "docker": "Docker",
+    "refresh_button": "🔄 Refresh",
+    "unavailable": "❌ Could not retrieve metrics. Is Glances running?"
+  },
+  "alerts": {
+    "header": "🔔 *Alert Thresholds*",
+    "cpu_label": "CPU",
+    "ram_label": "RAM",
+    "disk_label": "Disk",
+    "threshold_line": "{metric}: *{value}%*",
+    "edit_button": "✏️ Edit {metric}",
+    "prompt_new_value": "Enter the new threshold for *{metric}* (0-100):",
+    "invalid_value": "❌ Invalid value. Please enter a number between 0 and 100.",
+    "confirm_change": "Set *{metric}* threshold to *{value}%*?",
+    "confirm_button": "✅ Confirm",
+    "cancel_button": "❌ Cancel",
+    "updated": "✅ *{metric}* threshold updated to *{value}%*.",
+    "cancelled": "ℹ️ Change cancelled."
+  },
+  "models": {
+    "header": "🤖 *Ollama Models*",
+    "no_models": "ℹ️ No models found on the Ollama instance.",
+    "model_line": "• `{name}`",
+    "unavailable": "❌ Could not reach Ollama. Is the service running?"
+  },
+  "chat": {
+    "thinking": "⏳ Thinking…",
+    "error": "❌ Something went wrong while generating a response. Please try again."
+  },
+  "errors": {
+    "unauthorized": "⛔ Unauthorized.",
+    "general": "❌ An unexpected error occurred. Please try again later.",
+    "service_unavailable": "⚠️ One or more services are unreachable. Check that Glances and Ollama are running."
+  },
+  "alerts_notification": {
+    "cpu": "⚠️ *CPU alert*: usage at *{value}%* (threshold: {threshold}%)",
+    "ram": "⚠️ *RAM alert*: usage at *{value}%* (threshold: {threshold}%)",
+    "disk": "⚠️ *Disk alert*: usage at *{value}%* (threshold: {threshold}%)"
+  }
+}

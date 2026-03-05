@@ -1,0 +1,52 @@
+"""Lightweight i18n helper.
+
+Usage:
+    from app.utils.i18n import t
+
+    t("start.welcome")
+    t("alerts.threshold_line", metric="CPU", value=85)
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+_strings: dict[str, Any] = {}
+_loaded_locale: str = ""
+
+_LOCALE_DIR = Path(__file__).parent.parent.parent / "locale"
+
+
+def load(locale: str = "en") -> None:
+    """Load the given locale file into memory. Call once at startup."""
+    global _strings, _loaded_locale
+    path = _LOCALE_DIR / f"{locale}.json"
+    if not path.exists():
+        raise FileNotFoundError(f"Locale file not found: {path}")
+    with path.open(encoding="utf-8") as fh:
+        _strings = json.load(fh)
+    _loaded_locale = locale
+
+
+def t(key: str, **kwargs: Any) -> str:
+    """Return the localised string for *key* (dot-separated path).
+
+    Optional keyword arguments are interpolated via str.format().
+    Raises KeyError if the key does not exist.
+    """
+    if not _strings:
+        load()
+
+    parts = key.split(".")
+    value: Any = _strings
+    for part in parts:
+        if not isinstance(value, dict):
+            raise KeyError(f"i18n key not found: '{key}'")
+        value = value[part]
+
+    if not isinstance(value, str):
+        raise TypeError(f"i18n key '{key}' resolved to {type(value).__name__}, expected str")
+
+    return value.format(**kwargs) if kwargs else value
