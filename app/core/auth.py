@@ -32,7 +32,8 @@ def restricted(func: Callable[..., Any]) -> Callable[..., Any]:
         config = get_config()
         chat = update.effective_chat
         if chat is None or chat.id != config.telegram_chat_id:
-            logger.warning("Unauthorized access attempt from chat_id=%s", chat.id if chat else "unknown")
+            chat_id = chat.id if chat else "unknown"
+            logger.warning("Unauthorized access attempt from chat_id=%s", chat_id)
             return
         return await func(update, context, *args, **kwargs)
 
