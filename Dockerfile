@@ -12,7 +12,9 @@ RUN pip install --no-cache-dir --upgrade pip \
 COPY app /app/app
 COPY locale /app/locale
 
-RUN useradd --create-home --uid 10001 appuser
+RUN useradd --create-home --uid 1000 appuser \
+ && mkdir -p /app/data \
+ && chown appuser /app/data
 USER appuser
 
 CMD ["python", "-m", "app.main"]

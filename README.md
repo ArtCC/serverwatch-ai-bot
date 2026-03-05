@@ -131,6 +131,7 @@ cp .env.example .env
 | `BOT_LOCALE` | | `en` | Fallback locale if Telegram language is not available (must match a file in `locale/`) |
 | `TZ` | | `UTC` | Container timezone |
 | `SQLITE_PATH` | | `/app/data/serverwatch.db` | SQLite database path (inside container) |
+| `DATA_PATH` | | `/opt/docker/serverwatch-ai-bot/data` | Host path mounted as `/app/data` inside the container |
 | `ALERT_CHECK_INTERVAL_SECONDS` | | `60` | How often the alert engine checks metrics |
 | `ALERT_COOLDOWN_SECONDS` | | `300` | Minimum time between repeated alerts for the same metric |
 | `ALERT_DEFAULT_CPU_THRESHOLD` | | `85` | Default CPU alert threshold (%) |
@@ -170,7 +171,16 @@ Deploy as a stack using the `docker-compose.yml` from this repository. Define al
 
 | Host path | Container path | Contents |
 |---|---|---|
-| `./data` | `/app/data` | SQLite database |
+| `$DATA_PATH` (`/opt/docker/serverwatch-ai-bot/data`) | `/app/data` | SQLite database |
+
+Before the first deploy, create the directory on the host and assign ownership to UID 1000 (the user running inside the container):
+
+```bash
+mkdir -p /opt/docker/serverwatch-ai-bot/data
+chown 1000:1000 /opt/docker/serverwatch-ai-bot/data
+```
+
+If you use a different path, update `DATA_PATH` in your `.env` accordingly.
 
 ---
 

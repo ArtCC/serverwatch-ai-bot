@@ -22,7 +22,7 @@ services:
       glances:
         condition: service_started
     volumes:
-      - ./data:/app/data
+      - ${DATA_PATH:-/opt/docker/serverwatch-ai-bot/data}:/app/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
