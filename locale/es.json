@@ -54,7 +54,7 @@
     "error": "❌ Ha ocurrido un error al generar la respuesta. Por favor, inténtalo de nuevo."
   },
   "errors": {
-    "unauthorized": "⛔ No autorizado.",
+    "unauthorized": "👋 ¡Hola! Este es un bot privado y solo está disponible para su propietario. Si crees que es un error, contacta con el administrador.",
     "general": "❌ Se ha producido un error inesperado. Por favor, inténtalo más tarde.",
     "service_unavailable": "⚠️ Uno o más servicios no están disponibles. Comprueba que Glances y Ollama están en marcha."
   },

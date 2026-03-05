@@ -54,7 +54,7 @@
     "error": "❌ Something went wrong while generating a response. Please try again."
   },
   "errors": {
-    "unauthorized": "⛔ Unauthorized.",
+    "unauthorized": "👋 Hi! This is a private bot and is only available to its owner. If you think this is a mistake, please contact the administrator.",
     "general": "❌ An unexpected error occurred. Please try again later.",
     "service_unavailable": "⚠️ One or more services are unreachable. Check that Glances and Ollama are running."
   },
