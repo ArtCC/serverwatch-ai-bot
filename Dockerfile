@@ -5,6 +5,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+COPY pyproject.toml ./
+RUN pip install --no-cache-dir --upgrade pip \
+ && pip install --no-cache-dir .
+
 COPY app /app/app
 
 RUN useradd --create-home --uid 10001 appuser
