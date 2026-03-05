@@ -20,7 +20,7 @@ from telegram.ext import Application, ContextTypes, MessageHandler, filters
 from app.core import store
 from app.core.auth import restricted
 from app.services import glances, ollama
-from app.utils.i18n import t
+from app.utils.i18n import get_locale, t
 
 logger = logging.getLogger("serverwatch")
 
@@ -29,6 +29,7 @@ You are ServerWatch, a concise and helpful server monitoring assistant.
 The user is querying you from Telegram about their server.
 Respond in plain text — no markdown, no code blocks unless explicitly asked.
 Keep answers short and actionable.
+Always reply in the user's language (locale: {locale}).
 
 Current server metrics:
 {metrics}
@@ -39,11 +40,17 @@ You are ServerWatch, a concise and helpful server monitoring assistant.
 The user is querying you from Telegram about their server.
 Respond in plain text — no markdown, no code blocks unless explicitly asked.
 Keep answers short and actionable.
+Always reply in the user's language (locale: {locale}).
 Note: live server metrics are currently unavailable.
 """
 
-# Keyboard button texts that must NOT be caught by this handler
-_BUTTON_TEXTS = {"📊 Status", "🔔 Alerts", "🤖 Models", "❓ Help"}
+# Keyboard button locale keys — resolved at runtime so any locale is covered
+_BUTTON_KEYS = (
+    "keyboard.status",
+    "keyboard.alerts",
+    "keyboard.models",
+    "keyboard.help",
+)
 
 
 @restricted
@@ -52,7 +59,7 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if message is None or message.text is None:
         return
 
-    if message.text in _BUTTON_TEXTS:
+    if message.text in {t(k) for k in _BUTTON_KEYS}:
         return
 
     if update.effective_chat:
@@ -62,12 +69,13 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     # Fetch metrics (non-blocking failure)
     system_prompt: str
+    locale = get_locale()
     try:
         snapshot = await glances.get_snapshot()
-        system_prompt = _SYSTEM_WITH_METRICS.format(metrics=snapshot.as_text())
+        system_prompt = _SYSTEM_WITH_METRICS.format(locale=locale, metrics=snapshot.as_text())
     except Exception:
         logger.warning("Could not fetch Glances snapshot for chat context")
-        system_prompt = _SYSTEM_NO_METRICS
+        system_prompt = _SYSTEM_NO_METRICS.format(locale=locale)
 
     # Get active model
     model = await store.get_active_model()

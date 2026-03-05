@@ -53,6 +53,11 @@ def detect_and_load(telegram_lang: str | None, fallback: str) -> None:
             return
 
 
+def get_locale() -> str:
+    """Return the currently loaded locale code (e.g. 'es', 'en')."""
+    return _loaded_locale or "en"
+
+
 def t(key: str, **kwargs: Any) -> str:
     """Return the localised string for *key* (dot-separated path).
 
