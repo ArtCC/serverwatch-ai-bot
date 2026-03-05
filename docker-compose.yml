@@ -1,14 +1,8 @@
 services:
   bot:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: ghcr.io/artcc/serverwatch-ai-bot:local
+    image: ghcr.io/artcc/serverwatch-ai-bot:latest
     container_name: serverwatch-bot
     restart: unless-stopped
-    env_file:
-      - path: .env
-        required: false
     environment:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
