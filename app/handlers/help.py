@@ -8,7 +8,7 @@ from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandl
 
 from app.core.auth import restricted
 from app.core.config import get_config
-from app.utils.i18n import locale_from_update, t, text_matches_key
+from app.utils.i18n import locale_from_update, regex_for_key, t, text_matches_key
 
 
 @restricted
@@ -41,7 +41,7 @@ def register(app: Application) -> None:
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(
         MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
+            filters.TEXT & filters.Regex(regex_for_key("keyboard.help")) & ~filters.COMMAND,
             help_button,
         )
     )

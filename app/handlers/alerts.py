@@ -27,7 +27,7 @@ from telegram.ext import (
 from app.core import store
 from app.core.auth import restricted
 from app.core.config import get_config
-from app.utils.i18n import locale_from_update, t, text_matches_key
+from app.utils.i18n import locale_from_update, regex_for_key, t, text_matches_key
 
 logger = logging.getLogger("serverwatch")
 
@@ -343,7 +343,7 @@ def register(app: Application) -> None:
     app.add_handler(CommandHandler("alerts", alerts_command))
     app.add_handler(
         MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
+            filters.TEXT & filters.Regex(regex_for_key("keyboard.alerts")) & ~filters.COMMAND,
             alerts_button,
         )
     )

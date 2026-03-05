@@ -10,6 +10,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -128,6 +129,15 @@ def all_translations(key: str) -> set[str]:
 def text_matches_key(text: str, key: str) -> bool:
     """Check whether text equals the translation of key in any locale."""
     return text in all_translations(key)
+
+
+def regex_for_key(key: str) -> str:
+    """Return an anchored regex that matches all locale variants for a key."""
+    values = sorted(all_translations(key))
+    if not values:
+        return r"^$"
+    escaped = "|".join(re.escape(v) for v in values)
+    return rf"^({escaped})$"
 
 
 def t(key: str, locale: str | None = None, **kwargs: Any) -> str:
