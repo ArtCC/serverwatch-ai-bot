@@ -12,7 +12,7 @@
     "text": "ℹ️ *ServerWatch — Help*\n\n*Commands*\n/status — Current server metrics\n/alerts — View and configure alert thresholds\n/models — Available Ollama models\n/help — Show this message\n\n*How it works*\nJust type a question in natural language and I will gather live metrics and answer using your local LLM.\n\n*Example questions*\n• What process is using the most CPU?\n• How much free disk space is left?\n• Is the server doing OK right now?"
   },
   "status": {
-    "header": "📊 *Server Status*",
+    "header": "📊 Server Status",
     "cpu": "CPU",
     "ram": "RAM",
     "disk": "Disk",
@@ -38,16 +38,17 @@
     "cancelled": "ℹ️ Change cancelled."
   },
   "models": {
-    "header": "🤖 *Ollama Models*",
+    "header": "🤖 Ollama Models",
     "no_models": "ℹ️ No models found on the Ollama instance.",
     "model_line": "• `{name}`",
     "unavailable": "❌ Could not reach Ollama. Is the service running?",
-    "confirm_change": "Set active model to `{model}`?",
+    "confirm_change": "Set active model to {model}?",
     "confirm_button": "✅ Confirm",
     "cancel_button": "❌ Cancel",
-    "updated": "✅ Active model set to `{model}`.",
+    "updated": "✅ Active model set to {model}.",
     "cancelled": "ℹ️ Change cancelled.",
-    "already_active": "ℹ️ `{model}` is already the active model."
+    "already_active": "ℹ️ {model} is already the active model.",
+    "selection_expired": "⚠️ The model selection expired. Run /models again."
   },
   "chat": {
     "thinking": "⏳ Thinking…",
@@ -56,6 +57,7 @@
   "errors": {
     "unauthorized": "👋 Hi! This is a private bot and is only available to its owner. If you think this is a mistake, please contact the administrator.",
     "general": "❌ An unexpected error occurred. Please try again later.",
+    "telegram_bad_request": "⚠️ Telegram rejected this message format. Please try again.",
     "service_unavailable": "⚠️ One or more services are unreachable. Check that Glances and Ollama are running."
   },
   "alerts_notification": {

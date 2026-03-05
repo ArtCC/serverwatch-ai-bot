@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import logging
 
+import httpx
 from telegram import BotCommand, Update
 from telegram.constants import ParseMode
+from telegram.error import BadRequest, NetworkError, TimedOut
 from telegram.ext import Application, CommandHandler, ContextTypes
 
 from app.core import store
@@ -15,6 +17,7 @@ from app.handlers import models as models_handler
 from app.handlers import status as status_handler
 from app.handlers.start import start_handler
 from app.utils.i18n import load as load_locale
+from app.utils.i18n import locale_from_update
 from app.utils.i18n import t
 
 logger = logging.getLogger("serverwatch")
@@ -22,10 +25,18 @@ logger = logging.getLogger("serverwatch")
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Global error handler — logs the exception and replies with a friendly message."""
-    logger.exception("Unhandled exception", exc_info=context.error)
+    err = context.error
+    logger.exception("Unhandled exception", exc_info=err)
     if isinstance(update, Update) and update.effective_message:
+        locale = locale_from_update(update, fallback=get_config().bot_locale)
+        key = "errors.general"
+        if isinstance(err, (TimedOut, NetworkError, httpx.TimeoutException, httpx.HTTPError)):
+            key = "errors.service_unavailable"
+        elif isinstance(err, BadRequest):
+            key = "errors.telegram_bad_request"
+
         await update.effective_message.reply_text(
-            t("errors.general"),
+            t(key, locale=locale),
             parse_mode=ParseMode.MARKDOWN,
         )
 

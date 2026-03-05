@@ -19,8 +19,9 @@ from telegram.ext import Application, ContextTypes, MessageHandler, filters
 
 from app.core import store
 from app.core.auth import restricted
+from app.core.config import get_config
 from app.services import glances, ollama
-from app.utils.i18n import get_locale, t
+from app.utils.i18n import locale_from_update, t, text_matches_key
 
 logger = logging.getLogger("serverwatch")
 
@@ -53,23 +54,28 @@ _BUTTON_KEYS = (
 )
 
 
+def _is_keyboard_button_text(text: str) -> bool:
+    return any(text_matches_key(text, key) for key in _BUTTON_KEYS)
+
+
 @restricted
 async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.effective_message
     if message is None or message.text is None:
         return
 
-    if message.text in {t(k) for k in _BUTTON_KEYS}:
+    if _is_keyboard_button_text(message.text):
         return
+
+    locale = locale_from_update(update, fallback=get_config().bot_locale)
 
     if update.effective_chat:
         await update.effective_chat.send_action(ChatAction.TYPING)
 
-    placeholder = await message.reply_text(t("chat.thinking"), parse_mode=ParseMode.MARKDOWN)
+    placeholder = await message.reply_text(t("chat.thinking", locale=locale), parse_mode=ParseMode.MARKDOWN)
 
     # Fetch metrics (non-blocking failure)
     system_prompt: str
-    locale = get_locale()
     try:
         snapshot = await glances.get_snapshot()
         system_prompt = _SYSTEM_WITH_METRICS.format(locale=locale, metrics=snapshot.as_text())
@@ -85,14 +91,14 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         reply = await ollama.chat(model, system_prompt, message.text)
     except Exception:
         logger.exception("Ollama chat request failed")
-        await placeholder.edit_text(t("chat.error"), parse_mode=ParseMode.MARKDOWN)
+        await placeholder.edit_text(t("chat.error", locale=locale), parse_mode=ParseMode.MARKDOWN)
         return
 
     # Telegram messages can be 4096 chars max
     if len(reply) > 4096:
         reply = reply[:4090] + "…"
 
-    await placeholder.edit_text(reply, parse_mode=ParseMode.MARKDOWN)
+    await placeholder.edit_text(reply)
 
 
 def register(app: Application) -> None:

@@ -14,6 +14,20 @@ _TIMEOUT_LIST = 10.0
 _TIMEOUT_CHAT = 120.0  # LLM generation can be slow on low-end hardware
 
 
+def _extract_model_names(data: object) -> list[str]:
+    if not isinstance(data, dict):
+        return []
+
+    names: list[str] = []
+    for raw in data.get("models", []):
+        if not isinstance(raw, dict):
+            continue
+        name = raw.get("name")
+        if isinstance(name, str) and name.strip():
+            names.append(name)
+    return sorted(names)
+
+
 async def list_models() -> list[str]:
     """Return a sorted list of installed Ollama model names.
 
@@ -23,8 +37,7 @@ async def list_models() -> list[str]:
     async with httpx.AsyncClient(timeout=_TIMEOUT_LIST) as client:
         resp = await client.get(f"{base_url}/api/tags")
         resp.raise_for_status()
-        data = resp.json()
-        return sorted(m["name"] for m in data.get("models", []))
+        return _extract_model_names(resp.json())
 
 
 async def chat(model: str, system: str, user_message: str) -> str:

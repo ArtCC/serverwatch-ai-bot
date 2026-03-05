@@ -42,22 +42,22 @@ class ServerSnapshot:
     # ------------------------------------------------------------------
 
     def as_text(self) -> str:
-        """Return a compact multi-line text representation (Markdown)."""
+        """Return a compact multi-line text representation."""
         lines = [
-            f"*CPU*: {self.cpu_percent:.1f}%",
-            f"*RAM*: {self.ram_percent:.1f}% ({self.ram_used_gb:.1f} / {self.ram_total_gb:.1f} GB)",
-            f"*Disk*: {self.disk_percent:.1f}% "
+            f"CPU: {self.cpu_percent:.1f}%",
+            f"RAM: {self.ram_percent:.1f}% ({self.ram_used_gb:.1f} / {self.ram_total_gb:.1f} GB)",
+            f"Disk: {self.disk_percent:.1f}% "
             f"({self.disk_used_gb:.1f} / {self.disk_total_gb:.1f} GB)",
-            f"*Load avg*: {self.load_1:.2f} / {self.load_5:.2f} / {self.load_15:.2f}",
-            f"*Uptime*: {self.uptime}",
-            f"*Docker*: {self.docker_running} running / {self.docker_total} total",
+            f"Load avg: {self.load_1:.2f} / {self.load_5:.2f} / {self.load_15:.2f}",
+            f"Uptime: {self.uptime}",
+            f"Docker: {self.docker_running} running / {self.docker_total} total",
         ]
         if self.top_processes:
             lines.append("")
-            lines.append("*Top processes (CPU)*")
+            lines.append("Top processes (CPU)")
             for proc in self.top_processes[:5]:
                 lines.append(
-                    f"  • `{proc['name']}` — CPU {proc['cpu_percent']:.1f}%  "
+                    f"  - {proc['name']} | CPU {proc['cpu_percent']:.1f}% | "
                     f"RAM {proc['memory_percent']:.1f}%"
                 )
         return "\n".join(lines)

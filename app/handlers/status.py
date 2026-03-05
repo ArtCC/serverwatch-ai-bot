@@ -8,10 +8,9 @@ Flow:
 from __future__ import annotations
 
 import logging
-import re
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.constants import ChatAction, ParseMode
+from telegram.constants import ChatAction
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -22,38 +21,36 @@ from telegram.ext import (
 )
 
 from app.core.auth import restricted
+from app.core.config import get_config
 from app.services import glances
-from app.utils.i18n import t
+from app.utils.i18n import locale_from_update, t, text_matches_key
 
 logger = logging.getLogger("serverwatch")
 
 _CB_REFRESH = "status_refresh"
 
 
-def _refresh_keyboard() -> InlineKeyboardMarkup:
+def _refresh_keyboard(locale: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
-        [[InlineKeyboardButton(t("status.refresh_button"), callback_data=_CB_REFRESH)]]
+        [[InlineKeyboardButton(t("status.refresh_button", locale=locale), callback_data=_CB_REFRESH)]]
     )
 
 
 async def _render(update: Update, edit: bool = False) -> None:
+    locale = locale_from_update(update, fallback=get_config().bot_locale)
     try:
         snapshot = await glances.get_snapshot()
-        text = f"{t('status.header')}\n\n{snapshot.as_text()}"
+        text = f"{t('status.header', locale=locale)}\n\n{snapshot.as_text()}"
     except Exception:
         logger.exception("Failed to fetch Glances snapshot")
-        text = t("status.unavailable")
+        text = t("status.unavailable", locale=locale)
 
-    keyboard = _refresh_keyboard()
+    keyboard = _refresh_keyboard(locale)
 
     if edit and update.callback_query:
-        await update.callback_query.edit_message_text(
-            text, parse_mode=ParseMode.MARKDOWN, reply_markup=keyboard
-        )
+        await update.callback_query.edit_message_text(text, reply_markup=keyboard)
     elif update.effective_message:
-        await update.effective_message.reply_text(
-            text, parse_mode=ParseMode.MARKDOWN, reply_markup=keyboard
-        )
+        await update.effective_message.reply_text(text, reply_markup=keyboard)
 
 
 @restricted
@@ -65,6 +62,12 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 @restricted
 async def status_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    message = update.effective_message
+    if message is None or message.text is None:
+        return
+    if not text_matches_key(message.text, "keyboard.status"):
+        return
+
     if update.effective_chat:
         await update.effective_chat.send_action(ChatAction.TYPING)
     await _render(update)
@@ -85,7 +88,7 @@ def register(app: Application) -> None:
     app.add_handler(CommandHandler("status", status_command))
     app.add_handler(
         MessageHandler(
-            filters.TEXT & filters.Regex(f"^{re.escape(t('keyboard.status'))}$") & ~filters.COMMAND,
+            filters.TEXT & ~filters.COMMAND,
             status_button,
         )
     )

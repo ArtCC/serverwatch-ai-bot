@@ -11,7 +11,6 @@ Flow:
 from __future__ import annotations
 
 import logging
-import re
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatAction, ParseMode
@@ -27,7 +26,8 @@ from telegram.ext import (
 
 from app.core import store
 from app.core.auth import restricted
-from app.utils.i18n import t
+from app.core.config import get_config
+from app.utils.i18n import locale_from_update, t, text_matches_key
 
 logger = logging.getLogger("serverwatch")
 
@@ -57,34 +57,61 @@ _METRICS = {
 # ---------------------------------------------------------------------------
 
 
-async def _thresholds_text() -> str:
+async def _thresholds_text(locale: str) -> str:
     cpu = await store.get_threshold_cpu()
     ram = await store.get_threshold_ram()
     disk = await store.get_threshold_disk()
     lines = [
-        t("alerts.header"),
+        t("alerts.header", locale=locale),
         "",
-        t("alerts.threshold_line", metric=t("alerts.cpu_label"), value=int(cpu)),
-        t("alerts.threshold_line", metric=t("alerts.ram_label"), value=int(ram)),
-        t("alerts.threshold_line", metric=t("alerts.disk_label"), value=int(disk)),
+        t(
+            "alerts.threshold_line",
+            locale=locale,
+            metric=t("alerts.cpu_label", locale=locale),
+            value=int(cpu),
+        ),
+        t(
+            "alerts.threshold_line",
+            locale=locale,
+            metric=t("alerts.ram_label", locale=locale),
+            value=int(ram),
+        ),
+        t(
+            "alerts.threshold_line",
+            locale=locale,
+            metric=t("alerts.disk_label", locale=locale),
+            value=int(disk),
+        ),
     ]
     return "\n".join(lines)
 
 
-def _edit_keyboard() -> InlineKeyboardMarkup:
+def _edit_keyboard(locale: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
             [
                 InlineKeyboardButton(
-                    t("alerts.edit_button", metric=t("alerts.cpu_label")),
+                    t(
+                        "alerts.edit_button",
+                        locale=locale,
+                        metric=t("alerts.cpu_label", locale=locale),
+                    ),
                     callback_data=_CB_EDIT_CPU,
                 ),
                 InlineKeyboardButton(
-                    t("alerts.edit_button", metric=t("alerts.ram_label")),
+                    t(
+                        "alerts.edit_button",
+                        locale=locale,
+                        metric=t("alerts.ram_label", locale=locale),
+                    ),
                     callback_data=_CB_EDIT_RAM,
                 ),
                 InlineKeyboardButton(
-                    t("alerts.edit_button", metric=t("alerts.disk_label")),
+                    t(
+                        "alerts.edit_button",
+                        locale=locale,
+                        metric=t("alerts.disk_label", locale=locale),
+                    ),
                     callback_data=_CB_EDIT_DISK,
                 ),
             ]
@@ -92,15 +119,18 @@ def _edit_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-def _confirm_keyboard(metric: str, value: float) -> InlineKeyboardMarkup:
+def _confirm_keyboard(metric: str, value: float, locale: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
             [
                 InlineKeyboardButton(
-                    t("alerts.confirm_button"),
+                    t("alerts.confirm_button", locale=locale),
                     callback_data=f"{_CB_CONFIRM}{metric}:{value}",
                 ),
-                InlineKeyboardButton(t("alerts.cancel_button"), callback_data=_CB_CANCEL),
+                InlineKeyboardButton(
+                    t("alerts.cancel_button", locale=locale),
+                    callback_data=_CB_CANCEL,
+                ),
             ]
         ]
     )
@@ -112,8 +142,9 @@ def _confirm_keyboard(metric: str, value: float) -> InlineKeyboardMarkup:
 
 
 async def _show_alerts(update: Update) -> None:
-    text = await _thresholds_text()
-    keyboard = _edit_keyboard()
+    locale = locale_from_update(update, fallback=get_config().bot_locale)
+    text = await _thresholds_text(locale)
+    keyboard = _edit_keyboard(locale)
     if update.effective_message:
         await update.effective_message.reply_text(
             text, parse_mode=ParseMode.MARKDOWN, reply_markup=keyboard
@@ -129,6 +160,12 @@ async def alerts_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 @restricted
 async def alerts_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    message = update.effective_message
+    if message is None or message.text is None:
+        return
+    if not text_matches_key(message.text, "keyboard.alerts"):
+        return
+
     if update.effective_chat:
         await update.effective_chat.send_action(ChatAction.TYPING)
     await _show_alerts(update)
@@ -147,11 +184,17 @@ async def cb_edit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await query.answer()
 
     metric = _METRICS.get(query.data or "", "")
+    locale = locale_from_update(update, fallback=get_config().bot_locale)
+    metric_label = {
+        "CPU": t("alerts.cpu_label", locale=locale),
+        "RAM": t("alerts.ram_label", locale=locale),
+        "Disk": t("alerts.disk_label", locale=locale),
+    }.get(metric, metric)
     if context.user_data is not None:
         context.user_data[_UD_METRIC] = metric
 
     await query.edit_message_text(
-        t("alerts.prompt_new_value", metric=metric),
+        t("alerts.prompt_new_value", locale=locale, metric=metric_label),
         parse_mode=ParseMode.MARKDOWN,
     )
     return _AWAIT_VALUE
@@ -169,25 +212,50 @@ async def receive_value(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         return ConversationHandler.END
 
     raw = message.text.strip()
+    locale = locale_from_update(update, fallback=get_config().bot_locale)
     metric = (context.user_data or {}).get(_UD_METRIC, "")
+    metric_label = {
+        "CPU": t("alerts.cpu_label", locale=locale),
+        "RAM": t("alerts.ram_label", locale=locale),
+        "Disk": t("alerts.disk_label", locale=locale),
+    }.get(metric, metric)
 
     try:
         value = float(raw)
         if not (0 <= value <= 100):
             raise ValueError
     except ValueError:
-        await message.reply_text(t("alerts.invalid_value"), parse_mode=ParseMode.MARKDOWN)
+        await message.reply_text(
+            t("alerts.invalid_value", locale=locale),
+            parse_mode=ParseMode.MARKDOWN,
+        )
         return _AWAIT_VALUE
 
     if context.user_data is not None:
         context.user_data[_UD_VALUE] = value
 
     await message.reply_text(
-        t("alerts.confirm_change", metric=metric, value=int(value)),
+        t("alerts.confirm_change", locale=locale, metric=metric_label, value=int(value)),
         parse_mode=ParseMode.MARKDOWN,
-        reply_markup=_confirm_keyboard(metric, value),
+        reply_markup=_confirm_keyboard(metric, value, locale),
     )
     return ConversationHandler.END
+
+
+def _parse_confirm_payload(data: str) -> tuple[str, float] | None:
+    if not data.startswith(_CB_CONFIRM):
+        return None
+    payload = data[len(_CB_CONFIRM) :]
+    metric, _, raw_value = payload.partition(":")
+    if metric not in {"CPU", "RAM", "Disk"}:
+        return None
+    try:
+        value = float(raw_value)
+    except ValueError:
+        return None
+    if not (0 <= value <= 100):
+        return None
+    return metric, value
 
 
 # ---------------------------------------------------------------------------
@@ -202,9 +270,16 @@ async def cb_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         return
     await query.answer()
 
-    data = (query.data or "")[len(_CB_CONFIRM) :]
-    metric, _, raw_value = data.partition(":")
-    value = float(raw_value)
+    locale = locale_from_update(update, fallback=get_config().bot_locale)
+    parsed = _parse_confirm_payload(query.data or "")
+    if parsed is None:
+        await query.edit_message_text(
+            t("alerts.invalid_value", locale=locale),
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    metric, value = parsed
 
     if metric == "CPU":
         await store.set_threshold_cpu(value)
@@ -215,11 +290,18 @@ async def cb_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     logger.info("Threshold updated: %s = %s%%", metric, value)
 
-    updated_text = await _thresholds_text()
+    updated_text = await _thresholds_text(locale)
+    metric_label = {
+        "CPU": t("alerts.cpu_label", locale=locale),
+        "RAM": t("alerts.ram_label", locale=locale),
+        "Disk": t("alerts.disk_label", locale=locale),
+    }.get(metric, metric)
     await query.edit_message_text(
-        t("alerts.updated", metric=metric, value=int(value)) + "\n\n" + updated_text,
+        t("alerts.updated", locale=locale, metric=metric_label, value=int(value))
+        + "\n\n"
+        + updated_text,
         parse_mode=ParseMode.MARKDOWN,
-        reply_markup=_edit_keyboard(),
+        reply_markup=_edit_keyboard(locale),
     )
 
 
@@ -229,7 +311,11 @@ async def cb_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if query is None:
         return
     await query.answer()
-    await query.edit_message_text(t("alerts.cancelled"), parse_mode=ParseMode.MARKDOWN)
+    locale = locale_from_update(update, fallback=get_config().bot_locale)
+    await query.edit_message_text(
+        t("alerts.cancelled", locale=locale),
+        parse_mode=ParseMode.MARKDOWN,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -257,7 +343,7 @@ def register(app: Application) -> None:
     app.add_handler(CommandHandler("alerts", alerts_command))
     app.add_handler(
         MessageHandler(
-            filters.TEXT & filters.Regex(f"^{re.escape(t('keyboard.alerts'))}$") & ~filters.COMMAND,
+            filters.TEXT & ~filters.COMMAND,
             alerts_button,
         )
     )

@@ -71,7 +71,10 @@ A `ReplyKeyboardMarkup` is always visible with four quick-access buttons:
 
 ## Localisation
 
-The bot detects the user's language automatically from Telegram on `/start`. If no matching locale file exists, it falls back to `BOT_LOCALE`.
+The bot resolves locale per incoming update using `Update.effective_user.language_code`.
+If no matching locale file exists, it falls back to `BOT_LOCALE`.
+
+Persistent keyboard buttons are matched across all supported locale files, so button routing keeps working even after language changes.
 
 | File | Language |
 |---|---|
@@ -79,6 +82,12 @@ The bot detects the user's language automatically from Telegram on `/start`. If 
 | `locale/es.json` | Spanish |
 
 To add a new language, create `locale/<lang>.json` with the same keys as `en.json` and set `BOT_LOCALE=<lang>` as the default fallback.
+
+### Message format policy
+
+- Dynamic external content (LLM replies, process names, model names) is sent as plain text.
+- Curated static templates still use Markdown where readability is better.
+- This prevents Telegram `BadRequest: can't parse entities` errors caused by unescaped dynamic content.
 
 ---
 
@@ -193,7 +202,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
 pip install -e .
-pip install ruff mypy
+pip install ruff mypy pytest
 ```
 
 ### Lint and type-check
@@ -202,9 +211,16 @@ pip install ruff mypy
 ruff check .
 ruff format --check .
 mypy app
+pytest -q
 ```
 
 CI runs the same checks automatically on every push via `.github/workflows/lint.yml`.
+
+### Troubleshooting
+
+- `Telegram rejected this message format`: usually transient formatting mismatch from upstream content. Retry the action; dynamic outputs are now sent as plain text to minimize this case.
+- `The model selection expired`: run `/models` again. Inline model confirmations are intentionally short-lived and tokenized.
+- Buttons not responding after locale change: verify your `locale/<lang>.json` has the same `keyboard.*` keys as `locale/en.json`.
 
 ---
 
@@ -212,7 +228,7 @@ CI runs the same checks automatically on every push via `.github/workflows/lint.
 
 | Workflow | Trigger | Action |
 |---|---|---|
-| `lint.yml` | Push / PR | `ruff` check + format + `mypy` |
+| `lint.yml` | Push / PR | `ruff` check + format + `mypy` + `pytest` |
 | `package.yml` | Push to `main` | Build and publish Docker image to GHCR |
 
 Published image tags:
