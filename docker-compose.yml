@@ -7,10 +7,23 @@ services:
     container_name: serverwatch-bot
     restart: unless-stopped
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
       GLANCES_BASE_URL: ${GLANCES_BASE_URL:-http://glances:61208/api/4}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:3b}
+      BOT_LOG_LEVEL: ${BOT_LOG_LEVEL:-INFO}
+      BOT_LOCALE: ${BOT_LOCALE:-en}
+      TZ: ${TZ:-UTC}
+      SQLITE_PATH: ${SQLITE_PATH:-/app/data/serverwatch.db}
+      ALERT_CHECK_INTERVAL_SECONDS: ${ALERT_CHECK_INTERVAL_SECONDS:-60}
+      ALERT_COOLDOWN_SECONDS: ${ALERT_COOLDOWN_SECONDS:-300}
+      ALERT_DEFAULT_CPU_THRESHOLD: ${ALERT_DEFAULT_CPU_THRESHOLD:-85}
+      ALERT_DEFAULT_RAM_THRESHOLD: ${ALERT_DEFAULT_RAM_THRESHOLD:-85}
+      ALERT_DEFAULT_DISK_THRESHOLD: ${ALERT_DEFAULT_DISK_THRESHOLD:-90}
     depends_on:
       glances:
         condition: service_started
