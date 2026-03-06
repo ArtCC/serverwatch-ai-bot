@@ -69,6 +69,36 @@ _BUTTON_KEYS = (
     "keyboard.help",
 )
 
+_GLANCES_HINTS = (
+    "status",
+    "estado",
+    "nas",
+    "server",
+    "cpu",
+    "ram",
+    "mem",
+    "memoria",
+    "swap",
+    "disk",
+    "disco",
+    "storage",
+    "load",
+    "network",
+    "red",
+    "latencia",
+    "latency",
+    "proceso",
+    "process",
+    "docker",
+    "container",
+    "uptime",
+    "temperatura",
+    "temperature",
+    "bottleneck",
+    "rendimiento",
+    "performance",
+)
+
 
 def _is_keyboard_button_text(text: str) -> bool:
     return any(text_matches_key(text, key) for key in _BUTTON_KEYS)
@@ -97,6 +127,16 @@ async def _llm_should_use_glances(selection: str, user_message: str) -> bool:
     return _decider_wants_glances(decision)
 
 
+def _quick_glances_decision(user_message: str) -> bool | None:
+    """Fast local heuristic to avoid the routing LLM call when obvious."""
+    text = user_message.casefold()
+    if any(token in text for token in _GLANCES_HINTS):
+        return True
+    if len(text) <= 12:
+        return False
+    return None
+
+
 @restricted
 async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.effective_message
@@ -121,7 +161,15 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     selection = await store.get_active_model()
     provider, _, _ = selection.partition(":")
 
-    use_glances = await _llm_should_use_glances(selection, message.text)
+    quick_decision = _quick_glances_decision(message.text)
+    if quick_decision is None:
+        if provider in {"openai", "anthropic", "deepseek"}:
+            # Cloud path optimization: skip routing LLM call when intent is ambiguous.
+            use_glances = False
+        else:
+            use_glances = await _llm_should_use_glances(selection, message.text)
+    else:
+        use_glances = quick_decision
     try:
         if use_glances:
             snapshot = await glances.get_snapshot()

@@ -9,6 +9,8 @@ class Config:
     telegram_bot_token: str
     telegram_chat_id: int
     glances_base_url: str
+    glances_bundle_timeout_seconds: float
+    glances_log_full_payload: bool
     ollama_base_url: str
     ollama_model: str
     openai_api_key: str | None
@@ -17,7 +19,6 @@ class Config:
     anthropic_model: str | None
     deepseek_api_key: str | None
     deepseek_model: str | None
-    cloud_web_search_enabled: bool
     bot_log_level: str
     bot_locale: str
     sqlite_path: str
@@ -42,6 +43,10 @@ class Config:
             telegram_bot_token=token,
             telegram_chat_id=int(raw_chat_id),
             glances_base_url=os.getenv("GLANCES_BASE_URL", "http://glances:61208/api/4"),
+            glances_bundle_timeout_seconds=float(
+                os.getenv("GLANCES_BUNDLE_TIMEOUT_SECONDS", "2.5")
+            ),
+            glances_log_full_payload=_env_bool("GLANCES_LOG_FULL_PAYLOAD", default=False),
             ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434"),
             ollama_model=os.getenv("OLLAMA_MODEL", "llama3.2:3b"),
             openai_api_key=_optional_env("OPENAI_API_KEY"),
@@ -50,7 +55,6 @@ class Config:
             anthropic_model=_optional_env("ANTHROPIC_MODEL"),
             deepseek_api_key=_optional_env("DEEPSEEK_API_KEY"),
             deepseek_model=_optional_env("DEEPSEEK_MODEL"),
-            cloud_web_search_enabled=_env_bool("CLOUD_WEB_SEARCH_ENABLED", default=True),
             bot_log_level=os.getenv("BOT_LOG_LEVEL", "INFO"),
             bot_locale=os.getenv("BOT_LOCALE", "en"),
             sqlite_path=os.getenv("SQLITE_PATH", "/app/data/serverwatch.db"),

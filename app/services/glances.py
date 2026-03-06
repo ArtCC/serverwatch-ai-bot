@@ -91,12 +91,16 @@ class ServerSnapshot:
 
 async def get_snapshot() -> ServerSnapshot:
     """Fetch Glances metrics from individual endpoints and return a snapshot."""
-    base_url = get_config().glances_base_url.rstrip("/")
+    cfg = get_config()
+    base_url = cfg.glances_base_url.rstrip("/")
 
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-        payload = await _fetch_all(client, base_url)
+        payload = await _fetch_all(client, base_url, cfg.glances_bundle_timeout_seconds)
 
-    logger.info("Glances aggregated payload: %s", json.dumps(payload, ensure_ascii=True))
+    if cfg.glances_log_full_payload:
+        logger.info("Glances aggregated payload: %s", json.dumps(payload, ensure_ascii=True))
+    else:
+        logger.debug("Glances aggregated payload keys: %s", ", ".join(sorted(payload.keys())))
 
     cpu = _as_dict(payload.get("cpu"))
     mem = _as_dict(payload.get("mem"))
@@ -141,24 +145,52 @@ async def get_snapshot() -> ServerSnapshot:
     )
 
 
-async def _fetch_all(client: httpx.AsyncClient, base_url: str) -> dict[str, object]:
+async def _fetch_all(
+    client: httpx.AsyncClient, base_url: str, bundle_timeout_seconds: float
+) -> dict[str, object]:
     """Fetch a fixed bundle of Glances endpoints and aggregate responses."""
-    tasks = [client.get(f"{base_url}{path}") for _, path in _ENDPOINTS]
-    responses = await asyncio.gather(*tasks, return_exceptions=True)
+    if bundle_timeout_seconds <= 0:
+        request_coros = [client.get(f"{base_url}{path}") for _, path in _ENDPOINTS]
+        responses = await asyncio.gather(*request_coros, return_exceptions=True)
 
-    payload: dict[str, object] = {}
-    for (key, path), result in zip(_ENDPOINTS, responses, strict=False):
-        if isinstance(result, BaseException):
-            payload[key] = {"_error": str(result), "_endpoint": path}
-            continue
+        payload_full: dict[str, object] = {}
+        for (key, path), result in zip(_ENDPOINTS, responses, strict=False):
+            if isinstance(result, BaseException):
+                payload_full[key] = {"_error": str(result), "_endpoint": path}
+                continue
+            try:
+                result.raise_for_status()
+                payload_full[key] = result.json()
+            except Exception as exc:  # noqa: BLE001
+                payload_full[key] = {"_error": str(exc), "_endpoint": path}
+        return payload_full
 
+    pending_tasks: dict[asyncio.Task[httpx.Response], tuple[str, str]] = {
+        asyncio.create_task(client.get(f"{base_url}{path}")): (key, path)
+        for key, path in _ENDPOINTS
+    }
+
+    done, pending = await asyncio.wait(
+        pending_tasks.keys(),
+        timeout=max(bundle_timeout_seconds, 0.1),
+    )
+
+    payload_partial: dict[str, object] = {}
+    for task in done:
+        key, path = pending_tasks[task]
         try:
+            result = task.result()
             result.raise_for_status()
-            payload[key] = result.json()
+            payload_partial[key] = result.json()
         except Exception as exc:  # noqa: BLE001
-            payload[key] = {"_error": str(exc), "_endpoint": path}
+            payload_partial[key] = {"_error": str(exc), "_endpoint": path}
 
-    return payload
+    for task in pending:
+        key, path = pending_tasks[task]
+        task.cancel()
+        payload_partial[key] = {"_error": "timeout", "_endpoint": path}
+
+    return payload_partial
 
 
 def _num(value: object) -> float:

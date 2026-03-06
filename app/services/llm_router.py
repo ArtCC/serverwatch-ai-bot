@@ -167,36 +167,32 @@ async def _chat_openai(model: str, system: str, user_message: str) -> str:
             {"role": "user", "content": user_message},
         ],
     }
-    if cfg.cloud_web_search_enabled:
-        responses_payload: dict[str, object] = {
-            "model": model,
-            "input": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user_message},
-            ],
-            "tools": [{"type": "web_search"}],
-            "tool_choice": "auto",
-        }
-        try:
-            async with httpx.AsyncClient(timeout=_TIMEOUT_CHAT) as client:
-                resp = await client.post(
-                    _OPENAI_RESPONSES_URL,
-                    headers=headers,
-                    json=responses_payload,
-                )
-                resp.raise_for_status()
-                data = resp.json()
-            text = _extract_openai_responses_text(data)
-            if text:
-                return text
-            logger.warning(
-                "OpenAI Responses API returned no text. Falling back to chat completions."
+    responses_payload: dict[str, object] = {
+        "model": model,
+        "input": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user_message},
+        ],
+        "tools": [{"type": "web_search"}],
+        "tool_choice": "auto",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT_CHAT) as client:
+            resp = await client.post(
+                _OPENAI_RESPONSES_URL,
+                headers=headers,
+                json=responses_payload,
             )
-        except httpx.HTTPStatusError:
-            logger.warning(
-                "OpenAI web search request failed. "
-                "Retrying without web search via chat completions."
-            )
+            resp.raise_for_status()
+            data = resp.json()
+        text = _extract_openai_responses_text(data)
+        if text:
+            return text
+        logger.warning("OpenAI Responses API returned no text. Falling back to chat completions.")
+    except httpx.HTTPStatusError:
+        logger.warning(
+            "OpenAI web search request failed. Retrying without web search via chat completions."
+        )
 
     async with httpx.AsyncClient(timeout=_TIMEOUT_CHAT) as client:
         resp = await client.post(_OPENAI_URL, headers=headers, json=chat_payload)
@@ -237,7 +233,7 @@ async def _chat_deepseek(model: str, system: str, user_message: str) -> str:
         ],
     }
 
-    if cfg.cloud_web_search_enabled and not _deepseek_web_search_notice_logged:
+    if not _deepseek_web_search_notice_logged:
         logger.info(
             "DeepSeek web search is not enabled: Chat Completions API docs "
             "do not expose a web search parameter."
@@ -286,9 +282,7 @@ async def _chat_anthropic(model: str, system: str, user_message: str) -> str:
 
     # Best effort: try Anthropic hosted web search tool and fallback if unavailable.
     fallback_headers: dict[str, str] | None = None
-    use_anthropic_web_search = (
-        cfg.cloud_web_search_enabled and _anthropic_web_search_supported is not False
-    )
+    use_anthropic_web_search = _anthropic_web_search_supported is not False
     if use_anthropic_web_search:
         fallback_headers = dict(headers)
         fallback_payload = dict(payload)
