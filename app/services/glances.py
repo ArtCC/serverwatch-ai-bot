@@ -6,6 +6,7 @@ All functions raise httpx.HTTPError on connectivity / HTTP errors.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from dataclasses import dataclass
@@ -17,6 +18,25 @@ from app.core.config import get_config
 logger = logging.getLogger("serverwatch")
 
 _TIMEOUT = 8.0
+_ENDPOINTS: tuple[tuple[str, str], ...] = (
+    ("status", "/status"),
+    ("cpu", "/cpu"),
+    ("load", "/load"),
+    ("mem", "/mem"),
+    ("memswap", "/memswap"),
+    ("fs", "/fs"),
+    ("processcount", "/processcount"),
+    ("uptime", "/uptime"),
+    ("diskio", "/diskio"),
+    ("network", "/network"),
+    ("containers", "/containers"),
+    ("processlist", "/processlist/top/10"),
+    ("sensors", "/sensors"),
+    ("system", "/system"),
+    ("core", "/core"),
+    ("version", "/version"),
+    ("pluginslist", "/pluginslist"),
+)
 
 
 @dataclass
@@ -65,25 +85,18 @@ class ServerSnapshot:
         return "\n".join(lines)
 
     def as_raw_json(self) -> str:
-        """Return raw /all payload serialized as JSON."""
+        """Return aggregated Glances payload serialized as JSON."""
         return json.dumps(self.raw_all, ensure_ascii=True)
 
 
 async def get_snapshot() -> ServerSnapshot:
-    """Fetch /all once and return a ServerSnapshot."""
+    """Fetch Glances metrics from individual endpoints and return a snapshot."""
     base_url = get_config().glances_base_url.rstrip("/")
 
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-        all_r = await _fetch_all(client, base_url)
+        payload = await _fetch_all(client, base_url)
 
-    payload_raw: object = all_r.json()
-    payload: dict[str, object]
-    if isinstance(payload_raw, dict):
-        payload = {str(k): v for k, v in payload_raw.items()}
-    else:
-        payload = {}
-
-    logger.info("Glances /all payload: %s", json.dumps(payload, ensure_ascii=True))
+    logger.info("Glances aggregated payload: %s", json.dumps(payload, ensure_ascii=True))
 
     cpu = _as_dict(payload.get("cpu"))
     mem = _as_dict(payload.get("mem"))
@@ -128,11 +141,24 @@ async def get_snapshot() -> ServerSnapshot:
     )
 
 
-async def _fetch_all(client: httpx.AsyncClient, base_url: str) -> httpx.Response:
-    """Fetch full metrics payload from /all endpoint."""
-    response = await client.get(f"{base_url}/all")
-    response.raise_for_status()
-    return response
+async def _fetch_all(client: httpx.AsyncClient, base_url: str) -> dict[str, object]:
+    """Fetch a fixed bundle of Glances endpoints and aggregate responses."""
+    tasks = [client.get(f"{base_url}{path}") for _, path in _ENDPOINTS]
+    responses = await asyncio.gather(*tasks, return_exceptions=True)
+
+    payload: dict[str, object] = {}
+    for (key, path), result in zip(_ENDPOINTS, responses, strict=False):
+        if isinstance(result, BaseException):
+            payload[key] = {"_error": str(result), "_endpoint": path}
+            continue
+
+        try:
+            result.raise_for_status()
+            payload[key] = result.json()
+        except Exception as exc:  # noqa: BLE001
+            payload[key] = {"_error": str(exc), "_endpoint": path}
+
+    return payload
 
 
 def _num(value: object) -> float:
