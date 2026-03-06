@@ -16,6 +16,7 @@ from app.handlers import help as help_handler
 from app.handlers import models as models_handler
 from app.handlers import status as status_handler
 from app.handlers.start import start_handler
+from app.services import scheduler as scheduler_service
 from app.utils.i18n import load as load_locale
 from app.utils.i18n import locale_from_update, t
 
@@ -78,6 +79,7 @@ def main() -> None:
     # chat handler must be last — it catches all remaining text messages
     chat_handler.register(app)
     app.add_error_handler(error_handler)
+    scheduler_service.register(app)
 
     logger.info("Polling started")
     app.run_polling(drop_pending_updates=True)

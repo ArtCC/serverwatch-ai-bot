@@ -118,6 +118,34 @@ async def set_active_model(model: str) -> None:
 # ------------------------------------------------------------------
 
 
+async def get_thresholds() -> tuple[float, float, float]:
+    """Return (cpu, ram, disk) thresholds in a single DB round-trip."""
+    keys = (_KEY_CPU_THRESHOLD, _KEY_RAM_THRESHOLD, _KEY_DISK_THRESHOLD)
+    async with aiosqlite.connect(_db_path()) as db:
+        async with db.execute(
+            "SELECT key, value FROM settings WHERE key IN (?, ?, ?)", keys
+        ) as cursor:
+            rows = await cursor.fetchall()
+    mapping: dict[str, str] = {str(row[0]): str(row[1]) for row in rows}
+    cfg = get_config()
+    cpu = (
+        float(mapping[_KEY_CPU_THRESHOLD])
+        if _KEY_CPU_THRESHOLD in mapping
+        else cfg.alert_default_cpu_threshold
+    )
+    ram = (
+        float(mapping[_KEY_RAM_THRESHOLD])
+        if _KEY_RAM_THRESHOLD in mapping
+        else cfg.alert_default_ram_threshold
+    )
+    disk = (
+        float(mapping[_KEY_DISK_THRESHOLD])
+        if _KEY_DISK_THRESHOLD in mapping
+        else cfg.alert_default_disk_threshold
+    )
+    return cpu, ram, disk
+
+
 async def get_threshold_cpu() -> float:
     value = await _get(_KEY_CPU_THRESHOLD)
     return float(value) if value is not None else get_config().alert_default_cpu_threshold

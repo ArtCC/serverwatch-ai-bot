@@ -54,9 +54,9 @@
 - [x] Best-effort cloud web search support: send provider-specific web search params and retry without them if unsupported
 
 ## Alert engine
-- [ ] `app/services/scheduler.py` — async loop that checks metrics every `ALERT_CHECK_INTERVAL_SECONDS`
-- [ ] Cooldown logic (`ALERT_COOLDOWN_SECONDS`) to avoid spamming repeated alerts
-- [ ] Proactive alert message to the chat when a threshold is exceeded
+- [x] `app/services/scheduler.py` — async loop that checks metrics every `ALERT_CHECK_INTERVAL_SECONDS`
+- [x] Cooldown logic (`ALERT_COOLDOWN_SECONDS`) to avoid spamming repeated alerts
+- [x] Proactive alert message to the chat when a threshold is exceeded
 
 ## Documentation (keep updated as we go)
 - [x] `CHANGELOG.md`

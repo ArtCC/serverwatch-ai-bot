@@ -59,4 +59,13 @@ async def chat(model: str, system: str, user_message: str) -> str:
         resp = await client.post(f"{base_url}/api/chat", json=payload)
         resp.raise_for_status()
         data = resp.json()
-        return str(data["message"]["content"])
+
+    if not isinstance(data, dict):
+        raise ValueError("Ollama response is not a JSON object")
+    message = data.get("message")
+    if not isinstance(message, dict):
+        raise ValueError("Ollama response does not include 'message'")
+    content = message.get("content")
+    if not isinstance(content, str):
+        raise ValueError("Ollama response 'message.content' is missing or not a string")
+    return content

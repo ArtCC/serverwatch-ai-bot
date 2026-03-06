@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from dataclasses import dataclass
 
 import httpx
@@ -17,7 +18,16 @@ from app.core.config import get_config
 
 logger = logging.getLogger("serverwatch")
 
-_TIMEOUT = 8.0
+_SNAPSHOT_TTL = 10.0  # seconds — reuse a recent snapshot within this window
+_cached_snapshot: ServerSnapshot | None = None
+_cache_timestamp: float = 0.0
+
+
+def _request_timeout() -> float:
+    """Per-request timeout for individual Glances endpoints."""
+    return get_config().glances_request_timeout_seconds
+
+
 _ENDPOINTS: tuple[tuple[str, str], ...] = (
     ("status", "/status"),
     ("cpu", "/cpu"),
@@ -63,25 +73,31 @@ class ServerSnapshot:
     # Convenience helpers
     # ------------------------------------------------------------------
 
-    def as_text(self) -> str:
+    def as_text(self, locale: str = "en") -> str:
         """Return a compact multi-line text representation."""
+        from app.utils.i18n import t  # local import to avoid circular deps at module load
+
         lines = [
-            f"CPU: {self.cpu_percent:.1f}%",
-            f"RAM: {self.ram_percent:.1f}% ({self.ram_used_gb:.1f} / {self.ram_total_gb:.1f} GB)",
-            f"Disk: {self.disk_percent:.1f}% "
-            f"({self.disk_used_gb:.1f} / {self.disk_total_gb:.1f} GB)",
-            f"Load avg: {self.load_1:.2f} / {self.load_5:.2f} / {self.load_15:.2f}",
-            f"Uptime: {self.uptime}",
-            f"Docker: {self.docker_running} running / {self.docker_total} total",
+            f"{t('status.cpu', locale=locale)}: {self.cpu_percent:.1f}%",
+            f"{t('status.ram', locale=locale)}: {self.ram_percent:.1f}%"
+            f" ({self.ram_used_gb:.1f} / {self.ram_total_gb:.1f} GB)",
+            f"{t('status.disk', locale=locale)}: {self.disk_percent:.1f}%"
+            f" ({self.disk_used_gb:.1f} / {self.disk_total_gb:.1f} GB)",
+            (
+                f"{t('status.load', locale=locale)}: "
+                f"{self.load_1:.2f} / {self.load_5:.2f} / {self.load_15:.2f}"
+            ),
+            f"{t('status.uptime', locale=locale)}: {self.uptime}",
+            f"{t('status.docker', locale=locale)}: {self.docker_running} / {self.docker_total}",
         ]
         if self.top_processes:
             lines.append("")
             lines.append("Top processes (CPU)")
             for proc in self.top_processes[:5]:
-                lines.append(
-                    f"  - {proc['name']} | CPU {proc['cpu_percent']:.1f}% | "
-                    f"RAM {proc['memory_percent']:.1f}%"
-                )
+                name = proc.get("name") or "?"
+                cpu_pct = _num(proc.get("cpu_percent", 0))
+                mem_pct = _num(proc.get("memory_percent", 0))
+                lines.append(f"  - {name} | CPU {cpu_pct:.1f}% | RAM {mem_pct:.1f}%")
         return "\n".join(lines)
 
     def as_raw_json(self) -> str:
@@ -90,11 +106,29 @@ class ServerSnapshot:
 
 
 async def get_snapshot() -> ServerSnapshot:
-    """Fetch Glances metrics from individual endpoints and return a snapshot."""
+    """Fetch Glances metrics from individual endpoints and return a snapshot.
+
+    Results are cached for _SNAPSHOT_TTL seconds to avoid redundant HTTP
+    calls when multiple parts of the bot query metrics in quick succession.
+    """
+    global _cached_snapshot, _cache_timestamp
+    now = time.monotonic()
+    if _cached_snapshot is not None and (now - _cache_timestamp) < _SNAPSHOT_TTL:
+        logger.debug("Returning cached Glances snapshot (age=%.1fs)", now - _cache_timestamp)
+        return _cached_snapshot
+
+    snapshot = await _fetch_snapshot()
+    _cached_snapshot = snapshot
+    _cache_timestamp = now
+    return snapshot
+
+
+async def _fetch_snapshot() -> ServerSnapshot:
+    """Internal: always performs live HTTP requests to Glances."""
     cfg = get_config()
     base_url = cfg.glances_base_url.rstrip("/")
 
-    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+    async with httpx.AsyncClient(timeout=_request_timeout()) as client:
         payload = await _fetch_all(client, base_url, cfg.glances_bundle_timeout_seconds)
 
     if cfg.glances_log_full_payload:

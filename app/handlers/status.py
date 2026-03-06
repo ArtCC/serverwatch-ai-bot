@@ -47,7 +47,7 @@ async def _render(update: Update, edit: bool = False) -> None:
     locale = locale_from_update(update, fallback=get_config().bot_locale)
     try:
         snapshot = await glances.get_snapshot()
-        text = f"{t('status.header', locale=locale)}\n\n{snapshot.as_text()}"
+        text = f"{t('status.header', locale=locale)}\n\n{snapshot.as_text(locale=locale)}"
     except Exception:
         logger.exception("Failed to fetch Glances snapshot")
         text = t("status.unavailable", locale=locale)

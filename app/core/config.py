@@ -10,6 +10,7 @@ class Config:
     telegram_chat_id: int
     glances_base_url: str
     glances_bundle_timeout_seconds: float
+    glances_request_timeout_seconds: float
     glances_log_full_payload: bool
     ollama_base_url: str
     ollama_model: str
@@ -45,6 +46,9 @@ class Config:
             glances_base_url=os.getenv("GLANCES_BASE_URL", "http://glances:61208/api/4"),
             glances_bundle_timeout_seconds=float(
                 os.getenv("GLANCES_BUNDLE_TIMEOUT_SECONDS", "2.5")
+            ),
+            glances_request_timeout_seconds=float(
+                os.getenv("GLANCES_REQUEST_TIMEOUT_SECONDS", "8.0")
             ),
             glances_log_full_payload=_env_bool("GLANCES_LOG_FULL_PAYLOAD", default=False),
             ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434"),

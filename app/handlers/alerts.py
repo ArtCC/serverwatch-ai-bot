@@ -58,9 +58,7 @@ _METRICS = {
 
 
 async def _thresholds_text(locale: str) -> str:
-    cpu = await store.get_threshold_cpu()
-    ram = await store.get_threshold_ram()
-    disk = await store.get_threshold_disk()
+    cpu, ram, disk = await store.get_thresholds()
     lines = [
         t("alerts.header", locale=locale),
         "",
