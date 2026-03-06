@@ -26,6 +26,44 @@ class ModelOption:
     model: str
 
 
+def _is_bad_request(exc: httpx.HTTPStatusError) -> bool:
+    response = exc.response
+    return response is not None and response.status_code == 400
+
+
+async def _post_chat_completion_with_optional_retry(
+    *,
+    client: httpx.AsyncClient,
+    url: str,
+    headers: dict[str, str],
+    payload: dict[str, object],
+    fallback_payload: dict[str, object] | None,
+    fallback_headers: dict[str, str] | None,
+    provider: str,
+) -> dict[str, object]:
+    try:
+        resp = await client.post(url, headers=headers, json=payload)
+        resp.raise_for_status()
+        data = resp.json()
+        if isinstance(data, dict):
+            return data
+        raise ValueError(f"{provider} response is not a JSON object")
+    except httpx.HTTPStatusError as exc:
+        if fallback_payload is None or not _is_bad_request(exc):
+            raise
+        logger.warning(
+            "%s rejected web search parameters (400). Retrying without web search.",
+            provider,
+        )
+        retry_headers = fallback_headers or headers
+        resp = await client.post(url, headers=retry_headers, json=fallback_payload)
+        resp.raise_for_status()
+        data = resp.json()
+        if isinstance(data, dict):
+            return data
+        raise ValueError(f"{provider} response is not a JSON object") from exc
+
+
 def configured_cloud_options(config: Config | None = None) -> list[ModelOption]:
     cfg = config or get_config()
     options: list[ModelOption] = []
@@ -101,23 +139,40 @@ async def _chat_openai(model: str, system: str, user_message: str) -> str:
         "Authorization": f"Bearer {cfg.openai_api_key}",
         "Content-Type": "application/json",
     }
-    payload = {
+    payload: dict[str, object] = {
         "model": model,
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": user_message},
         ],
     }
+    fallback_payload: dict[str, object] | None = None
+
+    # Best effort: enable provider-side web search where supported.
+    if cfg.cloud_web_search_enabled:
+        fallback_payload = dict(payload)
+        payload["web_search_options"] = {"search_context_size": "medium"}
 
     async with httpx.AsyncClient(timeout=_TIMEOUT_CHAT) as client:
-        resp = await client.post(_OPENAI_URL, headers=headers, json=payload)
-        resp.raise_for_status()
-        data = resp.json()
+        data = await _post_chat_completion_with_optional_retry(
+            client=client,
+            url=_OPENAI_URL,
+            headers=headers,
+            payload=payload,
+            fallback_payload=fallback_payload,
+            fallback_headers=None,
+            provider="OpenAI",
+        )
 
-    choices = data.get("choices", [])
-    if not choices:
+    choices = data.get("choices")
+    if not isinstance(choices, list) or not choices:
         raise ValueError("OpenAI response does not include choices")
-    message = choices[0].get("message", {})
+    first = choices[0]
+    if not isinstance(first, dict):
+        raise ValueError("OpenAI response choice is invalid")
+    message = first.get("message", {})
+    if not isinstance(message, dict):
+        raise ValueError("OpenAI response message is invalid")
     content = message.get("content")
     if not isinstance(content, str):
         raise ValueError("OpenAI response content is missing")
@@ -133,23 +188,40 @@ async def _chat_deepseek(model: str, system: str, user_message: str) -> str:
         "Authorization": f"Bearer {cfg.deepseek_api_key}",
         "Content-Type": "application/json",
     }
-    payload = {
+    payload: dict[str, object] = {
         "model": model,
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": user_message},
         ],
     }
+    fallback_payload: dict[str, object] | None = None
+
+    # Best effort: DeepSeek can support web search for some models/configurations.
+    if cfg.cloud_web_search_enabled:
+        fallback_payload = dict(payload)
+        payload["web_search"] = True
 
     async with httpx.AsyncClient(timeout=_TIMEOUT_CHAT) as client:
-        resp = await client.post(_DEEPSEEK_URL, headers=headers, json=payload)
-        resp.raise_for_status()
-        data = resp.json()
+        data = await _post_chat_completion_with_optional_retry(
+            client=client,
+            url=_DEEPSEEK_URL,
+            headers=headers,
+            payload=payload,
+            fallback_payload=fallback_payload,
+            fallback_headers=None,
+            provider="DeepSeek",
+        )
 
-    choices = data.get("choices", [])
-    if not choices:
+    choices = data.get("choices")
+    if not isinstance(choices, list) or not choices:
         raise ValueError("DeepSeek response does not include choices")
-    message = choices[0].get("message", {})
+    first = choices[0]
+    if not isinstance(first, dict):
+        raise ValueError("DeepSeek response choice is invalid")
+    message = first.get("message", {})
+    if not isinstance(message, dict):
+        raise ValueError("DeepSeek response message is invalid")
     content = message.get("content")
     if not isinstance(content, str):
         raise ValueError("DeepSeek response content is missing")
@@ -166,17 +238,33 @@ async def _chat_anthropic(model: str, system: str, user_message: str) -> str:
         "anthropic-version": "2023-06-01",
         "content-type": "application/json",
     }
-    payload = {
+    payload: dict[str, object] = {
         "model": model,
         "max_tokens": 512,
         "system": system,
         "messages": [{"role": "user", "content": user_message}],
     }
+    fallback_payload: dict[str, object] | None = None
+
+    # Best effort: try Anthropic hosted web search tool and fallback if unavailable.
+    fallback_headers: dict[str, str] | None = None
+    if cfg.cloud_web_search_enabled:
+        fallback_headers = dict(headers)
+        headers = dict(headers)
+        headers["anthropic-beta"] = "web-search-2025-03-05"
+        fallback_payload = dict(payload)
+        payload["tools"] = [{"type": "web_search_20250305", "name": "web_search"}]
 
     async with httpx.AsyncClient(timeout=_TIMEOUT_CHAT) as client:
-        resp = await client.post(_ANTHROPIC_URL, headers=headers, json=payload)
-        resp.raise_for_status()
-        data = resp.json()
+        data = await _post_chat_completion_with_optional_retry(
+            client=client,
+            url=_ANTHROPIC_URL,
+            headers=headers,
+            payload=payload,
+            fallback_payload=fallback_payload,
+            fallback_headers=fallback_headers,
+            provider="Anthropic",
+        )
 
     content_list = data.get("content", [])
     if not isinstance(content_list, list) or not content_list:

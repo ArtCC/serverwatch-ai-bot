@@ -17,6 +17,7 @@ class Config:
     anthropic_model: str | None
     deepseek_api_key: str | None
     deepseek_model: str | None
+    cloud_web_search_enabled: bool
     bot_log_level: str
     bot_locale: str
     sqlite_path: str
@@ -49,6 +50,7 @@ class Config:
             anthropic_model=_optional_env("ANTHROPIC_MODEL"),
             deepseek_api_key=_optional_env("DEEPSEEK_API_KEY"),
             deepseek_model=_optional_env("DEEPSEEK_MODEL"),
+            cloud_web_search_enabled=_env_bool("CLOUD_WEB_SEARCH_ENABLED", default=True),
             bot_log_level=os.getenv("BOT_LOG_LEVEL", "INFO"),
             bot_locale=os.getenv("BOT_LOCALE", "en"),
             sqlite_path=os.getenv("SQLITE_PATH", "/app/data/serverwatch.db"),
@@ -70,6 +72,18 @@ def _optional_env(name: str) -> str | None:
         return None
     cleaned = value.strip()
     return cleaned if cleaned else None
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return default
 
 
 def get_config() -> Config:

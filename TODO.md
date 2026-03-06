@@ -51,6 +51,7 @@
 - [x] Cloud provider options are fixed by env (single model per provider): no extra in-bot per-provider model selection
 - [x] Persist active selection in store with provider metadata (e.g. `ollama:<name>`, `openai:<model>`, `anthropic:<model>`, `deepseek:<model>`)
 - [x] Validate graceful fallback/errors when cloud provider is selected but unreachable (friendly user message)
+- [x] Best-effort cloud web search support: send provider-specific web search params and retry without them if unsupported
 
 ## Alert engine
 - [ ] `app/services/scheduler.py` — async loop that checks metrics every `ALERT_CHECK_INTERVAL_SECONDS`

@@ -46,6 +46,7 @@ def test_configured_cloud_options_only_returns_fully_configured_providers() -> N
         anthropic_model="claude-3-5-sonnet-latest",
         deepseek_api_key="deepseek-key",
         deepseek_model="deepseek-chat",
+        cloud_web_search_enabled=True,
         bot_log_level="INFO",
         bot_locale="en",
         sqlite_path="/tmp/serverwatch.db",

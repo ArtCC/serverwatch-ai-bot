@@ -88,6 +88,7 @@ Supports local Ollama models and optional cloud providers (OpenAI, Anthropic, De
 | `ANTHROPIC_MODEL` | | — | Optional fixed Anthropic model |
 | `DEEPSEEK_API_KEY` | | — | Optional DeepSeek API key |
 | `DEEPSEEK_MODEL` | | — | Optional fixed DeepSeek model |
+| `CLOUD_WEB_SEARCH_ENABLED` | | `true` | Enable best-effort web search parameters for cloud providers |
 | `BOT_LOG_LEVEL` | | `INFO` | Logging level |
 | `BOT_LOCALE` | | `en` | Fallback locale |
 | `TZ` | | `UTC` | Timezone |
@@ -127,3 +128,13 @@ You can also run them separately:
 ## Contributing
 
 See `CONTRIBUTING.md`.
+
+## License
+
+This project is licensed under the Apache 2.0 License. See `LICENSE`.
+
+## Author
+
+[ArtCC](https://github.com/ArtCC)
+
+Built to keep server operations simple, clear, and always one message away.
