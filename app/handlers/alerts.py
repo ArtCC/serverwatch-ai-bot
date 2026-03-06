@@ -114,14 +114,13 @@ def _edit_keyboard(locale: str) -> InlineKeyboardMarkup:
                     ),
                     callback_data=_CB_EDIT_DISK,
                 ),
-            ]
-            ,
+            ],
             [
                 InlineKeyboardButton(
                     t("alerts.cancel_button", locale=locale),
                     callback_data=_CB_CLOSE,
                 )
-            ]
+            ],
         ]
     )
 
