@@ -45,6 +45,22 @@ Always reply in the user's language (locale: {locale}).
 Note: live server metrics are currently unavailable.
 """
 
+_TOOL_DECIDER_SYSTEM = """\
+You are a routing assistant for a server monitoring bot.
+Decide if you need live Glances metrics to answer the user's message well.
+
+Rules:
+- Return exactly `USE_GLANCES` if live server metrics are needed.
+- Return exactly `NO_GLANCES` if they are not needed.
+- Do not add any other text.
+
+Use `USE_GLANCES` for requests about status, health, CPU, RAM, disk, network,
+containers, processes, temperature, uptime, bottlenecks, troubleshooting or
+performance diagnosis.
+Use `NO_GLANCES` for generic chat, explanations, writing, or topics unrelated
+to the current server state.
+"""
+
 # Keyboard button locale keys — resolved at runtime so any locale is covered
 _BUTTON_KEYS = (
     "keyboard.status",
@@ -65,6 +81,20 @@ def _provider_display_name(provider: str) -> str:
         "deepseek": "DeepSeek",
         "ollama": "Ollama",
     }.get(provider, provider)
+
+
+def _decider_wants_glances(raw: str) -> bool:
+    normalized = raw.strip().upper()
+    return normalized == "USE_GLANCES"
+
+
+async def _llm_should_use_glances(selection: str, user_message: str) -> bool:
+    try:
+        decision = await llm_router.chat(selection, _TOOL_DECIDER_SYSTEM, user_message)
+    except Exception:
+        logger.warning("Tool decider failed; defaulting to NO_GLANCES")
+        return False
+    return _decider_wants_glances(decision)
 
 
 @restricted
@@ -88,19 +118,22 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     # Fetch metrics (non-blocking failure)
     system_prompt: str
+    selection = await store.get_active_model()
+    provider, _, _ = selection.partition(":")
+
+    use_glances = await _llm_should_use_glances(selection, message.text)
     try:
-        snapshot = await glances.get_snapshot()
-        system_prompt = _SYSTEM_WITH_METRICS.format(
-            locale=locale,
-            metrics_json=snapshot.as_raw_json(),
-        )
+        if use_glances:
+            snapshot = await glances.get_snapshot()
+            system_prompt = _SYSTEM_WITH_METRICS.format(
+                locale=locale,
+                metrics_json=snapshot.as_raw_json(),
+            )
+        else:
+            system_prompt = _SYSTEM_NO_METRICS.format(locale=locale)
     except Exception:
         logger.warning("Could not fetch Glances snapshot for chat context")
         system_prompt = _SYSTEM_NO_METRICS.format(locale=locale)
-
-    # Get active model selection (provider:model)
-    selection = await store.get_active_model()
-    provider, _, _ = selection.partition(":")
 
     # Query LLM
     try:

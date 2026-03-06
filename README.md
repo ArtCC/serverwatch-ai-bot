@@ -19,6 +19,41 @@ Supports local Ollama models and optional cloud providers (OpenAI, Anthropic, De
 4. The prompt is sent to the currently active model option (`ollama`, `openai`, `anthropic`, or `deepseek`).
 5. The reply is sent back in Telegram.
 
+## Glances usage
+
+The bot uses the Glances REST API v4 (`GLANCES_BASE_URL`) and currently fetches
+metrics through individual endpoints (not `/all`) to keep requests focused and
+reduce prompt size.
+
+When metrics are requested (`/status`, refresh button, or free-text chat), the
+bot queries this fixed bundle in parallel:
+
+- `/status`
+- `/cpu`
+- `/load`
+- `/mem`
+- `/memswap`
+- `/fs`
+- `/processcount`
+- `/uptime`
+- `/diskio`
+- `/network`
+- `/containers`
+- `/processlist/top/10`
+- `/sensors`
+- `/system`
+- `/core`
+- `/version`
+- `/pluginslist`
+
+Notes:
+
+- Base URL example: `http://glances:61208/api/4`
+- Glances auth is optional in this setup (works without auth if Glances is not
+  started with `--password`)
+- The bot logs an aggregated Glances payload at `INFO` level for diagnostics
+  (visible in container logs, e.g. Portainer)
+
 ## Commands
 
 | Command | Description |
