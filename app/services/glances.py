@@ -76,20 +76,23 @@ async def get_snapshot() -> ServerSnapshot:
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         all_r = await _fetch_all(client, base_url)
 
-    payload = all_r.json()
-    if not isinstance(payload, dict):
+    payload_raw: object = all_r.json()
+    payload: dict[str, object]
+    if isinstance(payload_raw, dict):
+        payload = {str(k): v for k, v in payload_raw.items()}
+    else:
         payload = {}
 
     logger.info("Glances /all payload: %s", json.dumps(payload, ensure_ascii=True))
 
-    cpu = payload.get("cpu") if isinstance(payload.get("cpu"), dict) else {}
-    mem = payload.get("mem") if isinstance(payload.get("mem"), dict) else {}
-    fs_data = payload.get("fs") if isinstance(payload.get("fs"), list) else []
-    disk = _pick_root_fs([e for e in fs_data if isinstance(e, dict)])
-    load = payload.get("load") if isinstance(payload.get("load"), dict) else {}
+    cpu = _as_dict(payload.get("cpu"))
+    mem = _as_dict(payload.get("mem"))
+    fs_data = _as_list_of_dicts(payload.get("fs"))
+    disk = _pick_root_fs(fs_data)
+    load = _as_dict(payload.get("load"))
     uptime = payload.get("uptime")
-    containers = payload.get("containers") if isinstance(payload.get("containers"), list) else []
-    processes = payload.get("processlist") if isinstance(payload.get("processlist"), list) else []
+    containers = _as_list_of_dicts(payload.get("containers"))
+    processes = _as_list_of_dicts(payload.get("processlist"))
 
     gb = 1024**3
 
@@ -97,26 +100,26 @@ async def get_snapshot() -> ServerSnapshot:
     disk_size = _num(disk.get("size", 1))
     disk_percent = _num(disk.get("percent", 0.0))
 
-    docker_all = containers if isinstance(containers, list) else containers.get("containers", [])
+    docker_all = containers
     docker_running = sum(1 for c in docker_all if c.get("status") == "running")
 
     top = sorted(
-        [p for p in processes if isinstance(p, dict)],
-        key=lambda p: p.get("cpu_percent", 0),
+        processes,
+        key=lambda p: _num(p.get("cpu_percent", 0)),
         reverse=True,
     )
 
     return ServerSnapshot(
-        cpu_percent=float(cpu.get("total", 0.0)),
-        ram_percent=float(mem.get("percent", 0.0)),
+        cpu_percent=_num(cpu.get("total", 0.0)),
+        ram_percent=_num(mem.get("percent", 0.0)),
         ram_used_gb=_num(mem.get("used", 0)) / gb,
         ram_total_gb=max(_num(mem.get("total", 0)), 1.0) / gb,
         disk_percent=float(disk_percent),
         disk_used_gb=disk_used / gb,
         disk_total_gb=disk_size / gb,
-        load_1=float(load.get("min1", 0.0)),
-        load_5=float(load.get("min5", 0.0)),
-        load_15=float(load.get("min15", 0.0)),
+        load_1=_num(load.get("min1", 0.0)),
+        load_5=_num(load.get("min5", 0.0)),
+        load_15=_num(load.get("min15", 0.0)),
         uptime=str(uptime).strip('"') if uptime else "n/a",
         docker_running=docker_running,
         docker_total=len(docker_all),
@@ -138,6 +141,24 @@ def _num(value: object) -> float:
         return float(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return 0.0
+
+
+def _as_dict(value: object) -> dict[str, object]:
+    """Return a JSON object with string keys, or an empty dict."""
+    if not isinstance(value, dict):
+        return {}
+    return {str(k): v for k, v in value.items()}
+
+
+def _as_list_of_dicts(value: object) -> list[dict[str, object]]:
+    """Return a list containing only JSON objects with string keys."""
+    if not isinstance(value, list):
+        return []
+    result: list[dict[str, object]] = []
+    for item in value:
+        if isinstance(item, dict):
+            result.append({str(k): v for k, v in item.items()})
+    return result
 
 
 def _pick_root_fs(fs_list: list[dict[str, object]]) -> dict[str, object]:
