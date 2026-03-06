@@ -17,6 +17,26 @@ _ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 _DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions"
 _TIMEOUT_CHAT = 120.0
 
+# Runtime capability flags to avoid repeated unsupported-tool retries/log spam.
+_anthropic_web_search_supported: bool | None = None
+_deepseek_web_search_notice_logged = False
+
+
+def _anthropic_web_search_tool(model: str) -> dict[str, object]:
+    # Dynamic filtering version is documented for Opus/Sonnet 4.6.
+    if model.startswith("claude-opus-4-6") or model.startswith("claude-sonnet-4-6"):
+        return {
+            "type": "web_search_20260209",
+            "name": "web_search",
+            "max_uses": 5,
+        }
+    return {
+        "type": "web_search_20250305",
+        "name": "web_search",
+        "max_uses": 5,
+    }
+
+
 logger = logging.getLogger("serverwatch")
 
 
@@ -41,13 +61,13 @@ async def _post_chat_completion_with_optional_retry(
     fallback_payload: dict[str, object] | None,
     fallback_headers: dict[str, str] | None,
     provider: str,
-) -> dict[str, object]:
+) -> tuple[dict[str, object], bool]:
     try:
         resp = await client.post(url, headers=headers, json=payload)
         resp.raise_for_status()
         data = resp.json()
         if isinstance(data, dict):
-            return data
+            return data, False
         raise ValueError(f"{provider} response is not a JSON object")
     except httpx.HTTPStatusError as exc:
         if fallback_payload is None or not _is_bad_request(exc):
@@ -61,7 +81,7 @@ async def _post_chat_completion_with_optional_retry(
         resp.raise_for_status()
         data = resp.json()
         if isinstance(data, dict):
-            return data
+            return data, True
         raise ValueError(f"{provider} response is not a JSON object") from exc
 
 
@@ -199,6 +219,8 @@ async def _chat_openai(model: str, system: str, user_message: str) -> str:
 
 
 async def _chat_deepseek(model: str, system: str, user_message: str) -> str:
+    global _deepseek_web_search_notice_logged
+
     cfg = get_config()
     if not cfg.deepseek_api_key:
         raise ValueError("DEEPSEEK_API_KEY is missing")
@@ -215,11 +237,12 @@ async def _chat_deepseek(model: str, system: str, user_message: str) -> str:
         ],
     }
 
-    if cfg.cloud_web_search_enabled:
+    if cfg.cloud_web_search_enabled and not _deepseek_web_search_notice_logged:
         logger.info(
             "DeepSeek web search is not enabled: Chat Completions API docs "
             "do not expose a web search parameter."
         )
+        _deepseek_web_search_notice_logged = True
 
     async with httpx.AsyncClient(timeout=_TIMEOUT_CHAT) as client:
         resp = await client.post(_DEEPSEEK_URL, headers=headers, json=payload)
@@ -242,6 +265,8 @@ async def _chat_deepseek(model: str, system: str, user_message: str) -> str:
 
 
 async def _chat_anthropic(model: str, system: str, user_message: str) -> str:
+    global _anthropic_web_search_supported
+
     cfg = get_config()
     if not cfg.anthropic_api_key:
         raise ValueError("ANTHROPIC_API_KEY is missing")
@@ -261,15 +286,16 @@ async def _chat_anthropic(model: str, system: str, user_message: str) -> str:
 
     # Best effort: try Anthropic hosted web search tool and fallback if unavailable.
     fallback_headers: dict[str, str] | None = None
-    if cfg.cloud_web_search_enabled:
+    use_anthropic_web_search = (
+        cfg.cloud_web_search_enabled and _anthropic_web_search_supported is not False
+    )
+    if use_anthropic_web_search:
         fallback_headers = dict(headers)
-        headers = dict(headers)
-        headers["anthropic-beta"] = "web-search-2025-03-05"
         fallback_payload = dict(payload)
-        payload["tools"] = [{"type": "web_search_20250305"}]
+        payload["tools"] = [_anthropic_web_search_tool(model)]
 
     async with httpx.AsyncClient(timeout=_TIMEOUT_CHAT) as client:
-        data = await _post_chat_completion_with_optional_retry(
+        data, used_fallback = await _post_chat_completion_with_optional_retry(
             client=client,
             url=_ANTHROPIC_URL,
             headers=headers,
@@ -278,6 +304,15 @@ async def _chat_anthropic(model: str, system: str, user_message: str) -> str:
             fallback_headers=fallback_headers,
             provider="Anthropic",
         )
+
+    if use_anthropic_web_search and used_fallback:
+        _anthropic_web_search_supported = False
+        logger.warning(
+            "Anthropic web search disabled for this runtime after 400 response. "
+            "Using regular Messages API for next requests."
+        )
+    elif use_anthropic_web_search and _anthropic_web_search_supported is None:
+        _anthropic_web_search_supported = True
 
     content_list = data.get("content", [])
     if not isinstance(content_list, list) or not content_list:
