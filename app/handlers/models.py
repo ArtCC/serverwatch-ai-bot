@@ -143,7 +143,15 @@ async def _show_models(
         ModelOption(selection=f"ollama:{name}", provider="ollama", model=name)
         for name in ollama_models
     ]
-    options.extend(configured_cloud_options())
+    cloud_options = configured_cloud_options()
+    options.extend(cloud_options)
+
+    logger.info(
+        "Model options loaded: ollama=%d cloud=%d total=%d",
+        len(ollama_models),
+        len(cloud_options),
+        len(options),
+    )
 
     if not options:
         text = (

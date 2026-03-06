@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 import httpx
@@ -15,6 +16,8 @@ _ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 _DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions"
 _TIMEOUT_CHAT = 120.0
 
+logger = logging.getLogger("serverwatch")
+
 
 @dataclass(frozen=True)
 class ModelOption:
@@ -26,6 +29,13 @@ class ModelOption:
 def configured_cloud_options(config: Config | None = None) -> list[ModelOption]:
     cfg = config or get_config()
     options: list[ModelOption] = []
+
+    logger.debug(
+        "Cloud model config present: openai=%s anthropic=%s deepseek=%s",
+        bool(cfg.openai_api_key and cfg.openai_model),
+        bool(cfg.anthropic_api_key and cfg.anthropic_model),
+        bool(cfg.deepseek_api_key and cfg.deepseek_model),
+    )
 
     if cfg.openai_api_key and cfg.openai_model:
         options.append(
