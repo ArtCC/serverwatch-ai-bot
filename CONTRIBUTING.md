@@ -54,9 +54,9 @@ docker compose up --build
 **Lint and type-check:**
 
 ```bash
-ruff check .
-ruff format --check .
-mypy app
+./.venv/bin/python -m ruff check .
+./.venv/bin/python -m ruff format --check .
+./.venv/bin/python -m mypy app
 ```
 
 ---

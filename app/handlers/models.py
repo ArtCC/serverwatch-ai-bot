@@ -57,6 +57,12 @@ def _display_name(option: ModelOption, locale: str) -> str:
     return f"{_provider_label(option.provider, locale)} | {option.model}"
 
 
+def _option_short_name(option: ModelOption, locale: str) -> str:
+    if option.provider == "ollama":
+        return option.model
+    return f"{_provider_label(option.provider, locale)} | {option.model}"
+
+
 def _models_keyboard(
     options: list[ModelOption],
     active: str,
@@ -75,7 +81,11 @@ def _models_keyboard(
         rows.append(
             [
                 InlineKeyboardButton(
-                    _display_name(option, locale),
+                    t(
+                        "models.select_button",
+                        locale=locale,
+                        model=_option_short_name(option, locale),
+                    ),
                     callback_data=f"{_CB_SELECT}{token}",
                 )
             ]
@@ -114,6 +124,52 @@ def _resolve_model_token(context: ContextTypes.DEFAULT_TYPE, token: str) -> str 
 def _parse_selection(selection: str) -> tuple[str, str]:
     provider, _, model = selection.partition(":")
     return provider, model
+
+
+def _build_models_text(
+    options: list[ModelOption],
+    active: str,
+    locale: str,
+    ollama_unavailable: bool,
+) -> str:
+    local_options = [o for o in options if o.provider == "ollama"]
+    cloud_options = [o for o in options if o.provider != "ollama"]
+
+    active_option = next((o for o in options if o.selection == active), None)
+    if active_option is not None:
+        active_label = _display_name(active_option, locale)
+    else:
+        provider, model = _parse_selection(active)
+        active_label = f"{_provider_label(provider, locale)} | {model}"
+
+    lines = [
+        t("models.header", locale=locale),
+        "",
+        t("models.active_line", locale=locale, model=active_label),
+        "",
+        t("models.local_section", locale=locale),
+    ]
+
+    if local_options:
+        for option in local_options:
+            marker = "✅" if option.selection == active else "•"
+            lines.append(f"{marker} {option.model}")
+    else:
+        lines.append(t("models.local_empty", locale=locale))
+
+    if ollama_unavailable:
+        lines.append(t("models.local_unavailable", locale=locale))
+
+    lines.extend(["", t("models.cloud_section", locale=locale)])
+
+    if cloud_options:
+        for option in cloud_options:
+            marker = "✅" if option.selection == active else "•"
+            lines.append(f"{marker} {_display_name(option, locale)}")
+    else:
+        lines.append(t("models.cloud_empty", locale=locale))
+
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -166,15 +222,7 @@ async def _show_models(
             await update.effective_message.reply_text(text)
         return
 
-    lines = [t("models.header", locale=locale), ""]
-    for option in options:
-        marker = "✅" if option.selection == active else "•"
-        lines.append(f"{marker} {_display_name(option, locale)}")
-
-    if ollama_unavailable:
-        lines.extend(["", t("models.ollama_unavailable_note", locale=locale)])
-
-    text = "\n".join(lines)
+    text = _build_models_text(options, active, locale, ollama_unavailable)
     keyboard, mapping = _models_keyboard(options, active, locale)
     if context.user_data is not None:
         context.user_data[_UD_CHOICES] = mapping

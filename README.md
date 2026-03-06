@@ -109,6 +109,14 @@ docker compose up -d --build
 
 ## Dev checks
 
+Recommended command (all-in-one):
+
+```bash
+./.venv/bin/python -m ruff check . && ./.venv/bin/python -m ruff format --check . && ./.venv/bin/python -m mypy app
+```
+
+You can also run them separately:
+
 ```bash
 ./.venv/bin/python -m ruff check .
 ./.venv/bin/python -m ruff format --check .
