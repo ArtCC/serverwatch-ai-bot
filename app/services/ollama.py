@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from collections.abc import AsyncIterator
@@ -14,6 +15,9 @@ logger = logging.getLogger("serverwatch")
 
 _TIMEOUT_LIST = 10.0
 _TIMEOUT_CHAT = 120.0  # LLM generation can be slow on low-end hardware
+_list_client: httpx.AsyncClient | None = None
+_chat_client: httpx.AsyncClient | None = None
+_client_guard = asyncio.Lock()
 
 
 def _extract_model_names(data: object) -> list[str]:
@@ -36,10 +40,10 @@ async def list_models() -> list[str]:
     Raises httpx.HTTPError on connectivity or HTTP errors.
     """
     base_url = get_config().ollama_base_url.rstrip("/")
-    async with httpx.AsyncClient(timeout=_TIMEOUT_LIST) as client:
-        resp = await client.get(f"{base_url}/api/tags")
-        resp.raise_for_status()
-        return _extract_model_names(resp.json())
+    client = await _get_list_client()
+    resp = await client.get(f"{base_url}/api/tags")
+    resp.raise_for_status()
+    return _extract_model_names(resp.json())
 
 
 async def chat(model: str, system: str, user_message: str) -> str:
@@ -57,10 +61,10 @@ async def chat(model: str, system: str, user_message: str) -> str:
             {"role": "user", "content": user_message},
         ],
     }
-    async with httpx.AsyncClient(timeout=_TIMEOUT_CHAT) as client:
-        resp = await client.post(f"{base_url}/api/chat", json=payload)
-        resp.raise_for_status()
-        data = resp.json()
+    client = await _get_chat_client()
+    resp = await client.post(f"{base_url}/api/chat", json=payload)
+    resp.raise_for_status()
+    data = resp.json()
 
     if not isinstance(data, dict):
         raise ValueError("Ollama response is not a JSON object")
@@ -89,26 +93,58 @@ async def chat_stream(model: str, system: str, user_message: str) -> AsyncIterat
         ],
     }
 
-    async with httpx.AsyncClient(timeout=_TIMEOUT_CHAT) as client:
-        async with client.stream("POST", f"{base_url}/api/chat", json=payload) as resp:
-            resp.raise_for_status()
+    client = await _get_chat_client()
+    async with client.stream("POST", f"{base_url}/api/chat", json=payload) as resp:
+        resp.raise_for_status()
 
-            async for line in resp.aiter_lines():
-                line = line.strip()
-                if not line:
-                    continue
+        async for line in resp.aiter_lines():
+            line = line.strip()
+            if not line:
+                continue
 
-                try:
-                    data = json.loads(line)
-                except json.JSONDecodeError:
-                    logger.warning("Skipping invalid JSON chunk from Ollama stream")
-                    continue
+            try:
+                data = json.loads(line)
+            except json.JSONDecodeError:
+                logger.warning("Skipping invalid JSON chunk from Ollama stream")
+                continue
 
-                if not isinstance(data, dict):
-                    continue
+            if not isinstance(data, dict):
+                continue
 
-                message = data.get("message")
-                if isinstance(message, dict):
-                    content = message.get("content")
-                    if isinstance(content, str) and content:
-                        yield content
+            message = data.get("message")
+            if isinstance(message, dict):
+                content = message.get("content")
+                if isinstance(content, str) and content:
+                    yield content
+
+
+async def _get_list_client() -> httpx.AsyncClient:
+    global _list_client
+    if _list_client is not None:
+        return _list_client
+    async with _client_guard:
+        if _list_client is None:
+            _list_client = httpx.AsyncClient(timeout=_TIMEOUT_LIST)
+        return _list_client
+
+
+async def _get_chat_client() -> httpx.AsyncClient:
+    global _chat_client
+    if _chat_client is not None:
+        return _chat_client
+    async with _client_guard:
+        if _chat_client is None:
+            _chat_client = httpx.AsyncClient(timeout=_TIMEOUT_CHAT)
+        return _chat_client
+
+
+async def close_clients() -> None:
+    """Close shared Ollama clients on application shutdown."""
+    global _list_client, _chat_client
+    async with _client_guard:
+        if _list_client is not None:
+            await _list_client.aclose()
+            _list_client = None
+        if _chat_client is not None:
+            await _chat_client.aclose()
+            _chat_client = None

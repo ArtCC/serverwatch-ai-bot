@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -40,6 +41,8 @@ def _anthropic_web_search_tool(model: str) -> dict[str, object]:
 
 
 logger = logging.getLogger("serverwatch")
+_http_client: httpx.AsyncClient | None = None
+_http_client_lock = asyncio.Lock()
 
 
 @dataclass(frozen=True)
@@ -287,13 +290,13 @@ async def _stream_openai(model: str, system: str, user_message: str) -> AsyncIte
         ],
     }
 
-    async with httpx.AsyncClient(timeout=_TIMEOUT_CHAT) as client:
-        async with client.stream("POST", _OPENAI_URL, headers=headers, json=payload) as resp:
-            resp.raise_for_status()
-            async for data in _iter_sse_json(resp):
-                chunk = _extract_openai_like_delta(data)
-                if chunk:
-                    yield chunk
+    client = await _get_http_client()
+    async with client.stream("POST", _OPENAI_URL, headers=headers, json=payload) as resp:
+        resp.raise_for_status()
+        async for data in _iter_sse_json(resp):
+            chunk = _extract_openai_like_delta(data)
+            if chunk:
+                yield chunk
 
 
 async def _stream_deepseek(model: str, system: str, user_message: str) -> AsyncIterator[str]:
@@ -314,13 +317,13 @@ async def _stream_deepseek(model: str, system: str, user_message: str) -> AsyncI
         ],
     }
 
-    async with httpx.AsyncClient(timeout=_TIMEOUT_CHAT) as client:
-        async with client.stream("POST", _DEEPSEEK_URL, headers=headers, json=payload) as resp:
-            resp.raise_for_status()
-            async for data in _iter_sse_json(resp):
-                chunk = _extract_openai_like_delta(data)
-                if chunk:
-                    yield chunk
+    client = await _get_http_client()
+    async with client.stream("POST", _DEEPSEEK_URL, headers=headers, json=payload) as resp:
+        resp.raise_for_status()
+        async for data in _iter_sse_json(resp):
+            chunk = _extract_openai_like_delta(data)
+            if chunk:
+                yield chunk
 
 
 async def _stream_anthropic(model: str, system: str, user_message: str) -> AsyncIterator[str]:
@@ -371,20 +374,20 @@ async def _stream_anthropic(model: str, system: str, user_message: str) -> Async
 async def _stream_anthropic_once(
     *, headers: dict[str, str], payload: dict[str, object]
 ) -> AsyncIterator[str]:
-    async with httpx.AsyncClient(timeout=_TIMEOUT_CHAT) as client:
-        async with client.stream("POST", _ANTHROPIC_URL, headers=headers, json=payload) as resp:
-            resp.raise_for_status()
-            async for data in _iter_sse_json(resp):
-                event_type = data.get("type")
-                if event_type == "content_block_delta":
-                    delta = data.get("delta")
-                    if not isinstance(delta, dict):
-                        continue
-                    if delta.get("type") != "text_delta":
-                        continue
-                    text = delta.get("text")
-                    if isinstance(text, str) and text:
-                        yield text
+    client = await _get_http_client()
+    async with client.stream("POST", _ANTHROPIC_URL, headers=headers, json=payload) as resp:
+        resp.raise_for_status()
+        async for data in _iter_sse_json(resp):
+            event_type = data.get("type")
+            if event_type == "content_block_delta":
+                delta = data.get("delta")
+                if not isinstance(delta, dict):
+                    continue
+                if delta.get("type") != "text_delta":
+                    continue
+                text = delta.get("text")
+                if isinstance(text, str) and text:
+                    yield text
 
 
 async def _chat_openai(model: str, system: str, user_message: str) -> str:
@@ -413,14 +416,14 @@ async def _chat_openai(model: str, system: str, user_message: str) -> str:
         "tool_choice": "auto",
     }
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT_CHAT) as client:
-            resp = await client.post(
-                _OPENAI_RESPONSES_URL,
-                headers=headers,
-                json=responses_payload,
-            )
-            resp.raise_for_status()
-            data = resp.json()
+        client = await _get_http_client()
+        resp = await client.post(
+            _OPENAI_RESPONSES_URL,
+            headers=headers,
+            json=responses_payload,
+        )
+        resp.raise_for_status()
+        data = resp.json()
         text = _extract_openai_responses_text(data)
         if text:
             return text
@@ -430,10 +433,10 @@ async def _chat_openai(model: str, system: str, user_message: str) -> str:
             "OpenAI web search request failed. Retrying without web search via chat completions."
         )
 
-    async with httpx.AsyncClient(timeout=_TIMEOUT_CHAT) as client:
-        resp = await client.post(_OPENAI_URL, headers=headers, json=chat_payload)
-        resp.raise_for_status()
-        data = resp.json()
+    client = await _get_http_client()
+    resp = await client.post(_OPENAI_URL, headers=headers, json=chat_payload)
+    resp.raise_for_status()
+    data = resp.json()
 
     choices = data.get("choices")
     if not isinstance(choices, list) or not choices:
@@ -476,10 +479,10 @@ async def _chat_deepseek(model: str, system: str, user_message: str) -> str:
         )
         _deepseek_web_search_notice_logged = True
 
-    async with httpx.AsyncClient(timeout=_TIMEOUT_CHAT) as client:
-        resp = await client.post(_DEEPSEEK_URL, headers=headers, json=payload)
-        resp.raise_for_status()
-        data = resp.json()
+    client = await _get_http_client()
+    resp = await client.post(_DEEPSEEK_URL, headers=headers, json=payload)
+    resp.raise_for_status()
+    data = resp.json()
 
     choices = data.get("choices")
     if not isinstance(choices, list) or not choices:
@@ -524,16 +527,16 @@ async def _chat_anthropic(model: str, system: str, user_message: str) -> str:
         fallback_payload = dict(payload)
         payload["tools"] = [_anthropic_web_search_tool(model)]
 
-    async with httpx.AsyncClient(timeout=_TIMEOUT_CHAT) as client:
-        data, used_fallback = await _post_chat_completion_with_optional_retry(
-            client=client,
-            url=_ANTHROPIC_URL,
-            headers=headers,
-            payload=payload,
-            fallback_payload=fallback_payload,
-            fallback_headers=fallback_headers,
-            provider="Anthropic",
-        )
+    client = await _get_http_client()
+    data, used_fallback = await _post_chat_completion_with_optional_retry(
+        client=client,
+        url=_ANTHROPIC_URL,
+        headers=headers,
+        payload=payload,
+        fallback_payload=fallback_payload,
+        fallback_headers=fallback_headers,
+        provider="Anthropic",
+    )
 
     if use_anthropic_web_search and used_fallback:
         _anthropic_web_search_supported = False
@@ -600,3 +603,24 @@ def _extract_openai_responses_text(data: object) -> str | None:
     if text_parts:
         return "\n".join(text_parts)
     return None
+
+
+async def _get_http_client() -> httpx.AsyncClient:
+    global _http_client
+    if _http_client is not None:
+        return _http_client
+
+    async with _http_client_lock:
+        if _http_client is None:
+            _http_client = httpx.AsyncClient(timeout=_TIMEOUT_CHAT)
+        return _http_client
+
+
+async def close_client() -> None:
+    """Close the shared LLM router HTTP client on app shutdown."""
+    global _http_client
+    async with _http_client_lock:
+        if _http_client is None:
+            return
+        await _http_client.aclose()
+        _http_client = None

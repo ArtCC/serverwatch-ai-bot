@@ -16,6 +16,9 @@ from app.handlers import help as help_handler
 from app.handlers import models as models_handler
 from app.handlers import status as status_handler
 from app.handlers.start import start_handler
+from app.services import glances as glances_service
+from app.services import llm_router as llm_router_service
+from app.services import ollama as ollama_service
 from app.services import scheduler as scheduler_service
 from app.utils.i18n import load as load_locale
 from app.utils.i18n import locale_from_update, t
@@ -58,6 +61,14 @@ async def post_init(application: Application) -> None:
     logger.info("Bot commands registered")
 
 
+async def post_shutdown(application: Application) -> None:
+    """Release shared service resources created during runtime."""
+    await glances_service.close_client()
+    await llm_router_service.close_client()
+    await ollama_service.close_clients()
+    logger.info("Service HTTP clients closed")
+
+
 def main() -> None:
     config = get_config()
 
@@ -69,7 +80,13 @@ def main() -> None:
     load_locale(config.bot_locale)
     logger.info("ServerWatch AI Bot starting — locale=%s", config.bot_locale)
 
-    app = Application.builder().token(config.telegram_bot_token).post_init(post_init).build()
+    app = (
+        Application.builder()
+        .token(config.telegram_bot_token)
+        .post_init(post_init)
+        .post_shutdown(post_shutdown)
+        .build()
+    )
 
     app.add_handler(CommandHandler("start", start_handler))
     status_handler.register(app)

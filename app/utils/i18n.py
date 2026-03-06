@@ -17,6 +17,9 @@ from typing import TYPE_CHECKING, Any
 _strings: dict[str, Any] = {}
 _loaded_locale: str = ""
 _cache: dict[str, dict[str, Any]] = {}
+_supported_locales_cache: tuple[str, ...] | None = None
+_translations_cache: dict[str, frozenset[str]] = {}
+_regex_cache: dict[str, str] = {}
 
 if TYPE_CHECKING:
     from telegram import Update
@@ -43,7 +46,10 @@ def _load_locale_file(locale: str) -> dict[str, Any]:
 
 def supported_locales() -> list[str]:
     """Return all available locale codes from /locale."""
-    return sorted(path.stem for path in _LOCALE_DIR.glob("*.json"))
+    global _supported_locales_cache
+    if _supported_locales_cache is None:
+        _supported_locales_cache = tuple(sorted(path.stem for path in _LOCALE_DIR.glob("*.json")))
+    return list(_supported_locales_cache)
 
 
 def load(locale: str = "en") -> None:
@@ -116,6 +122,10 @@ def _lookup(strings_obj: dict[str, Any], key: str) -> str:
 
 def all_translations(key: str) -> set[str]:
     """Return all translated strings for the given key across locales."""
+    cached = _translations_cache.get(key)
+    if cached is not None:
+        return set(cached)
+
     values: set[str] = set()
     for locale in supported_locales():
         strings_obj = _load_locale_file(locale)
@@ -123,21 +133,32 @@ def all_translations(key: str) -> set[str]:
             values.add(_lookup(strings_obj, key))
         except (KeyError, TypeError):
             continue
+    _translations_cache[key] = frozenset(values)
     return values
 
 
 def text_matches_key(text: str, key: str) -> bool:
     """Check whether text equals the translation of key in any locale."""
-    return text in all_translations(key)
+    cached = _translations_cache.get(key)
+    if cached is None:
+        cached = frozenset(all_translations(key))
+        _translations_cache[key] = cached
+    return text in cached
 
 
 def regex_for_key(key: str) -> str:
     """Return an anchored regex that matches all locale variants for a key."""
+    cached = _regex_cache.get(key)
+    if cached is not None:
+        return cached
+
     values = sorted(all_translations(key))
     if not values:
-        return r"^$"
+        _regex_cache[key] = r"^$"
+        return _regex_cache[key]
     escaped = "|".join(re.escape(v) for v in values)
-    return rf"^({escaped})$"
+    _regex_cache[key] = rf"^({escaped})$"
+    return _regex_cache[key]
 
 
 def t(key: str, locale: str | None = None, **kwargs: Any) -> str:

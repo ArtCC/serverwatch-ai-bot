@@ -21,6 +21,10 @@ logger = logging.getLogger("serverwatch")
 _SNAPSHOT_TTL = 10.0  # seconds — reuse a recent snapshot within this window
 _cached_snapshot: ServerSnapshot | None = None
 _cache_timestamp: float = 0.0
+_cache_lock = asyncio.Lock()
+_client: httpx.AsyncClient | None = None
+_client_timeout: float | None = None
+_client_lock = asyncio.Lock()
 
 
 def _request_timeout() -> float:
@@ -118,10 +122,46 @@ async def get_snapshot() -> ServerSnapshot:
         logger.debug("Returning cached Glances snapshot (age=%.1fs)", now - _cache_timestamp)
         return _cached_snapshot
 
-    snapshot = await _fetch_snapshot()
-    _cached_snapshot = snapshot
-    _cache_timestamp = now
-    return snapshot
+    async with _cache_lock:
+        now = time.monotonic()
+        if _cached_snapshot is not None and (now - _cache_timestamp) < _SNAPSHOT_TTL:
+            logger.debug("Returning cached Glances snapshot (age=%.1fs)", now - _cache_timestamp)
+            return _cached_snapshot
+
+        snapshot = await _fetch_snapshot()
+        _cached_snapshot = snapshot
+        _cache_timestamp = time.monotonic()
+        return snapshot
+
+
+async def _get_client() -> httpx.AsyncClient:
+    global _client, _client_timeout
+    timeout = _request_timeout()
+
+    if _client is not None and _client_timeout == timeout:
+        return _client
+
+    async with _client_lock:
+        if _client is not None and _client_timeout == timeout:
+            return _client
+
+        if _client is not None:
+            await _client.aclose()
+
+        _client = httpx.AsyncClient(timeout=timeout)
+        _client_timeout = timeout
+        return _client
+
+
+async def close_client() -> None:
+    """Close the shared Glances HTTP client when the app shuts down."""
+    global _client, _client_timeout
+    async with _client_lock:
+        if _client is None:
+            return
+        await _client.aclose()
+        _client = None
+        _client_timeout = None
 
 
 async def _fetch_snapshot() -> ServerSnapshot:
@@ -129,8 +169,8 @@ async def _fetch_snapshot() -> ServerSnapshot:
     cfg = get_config()
     base_url = cfg.glances_base_url.rstrip("/")
 
-    async with httpx.AsyncClient(timeout=_request_timeout()) as client:
-        payload = await _fetch_all(client, base_url)
+    client = await _get_client()
+    payload = await _fetch_all(client, base_url)
 
     if cfg.glances_log_full_payload:
         logger.info("Glances aggregated payload: %s", json.dumps(payload, ensure_ascii=True))
