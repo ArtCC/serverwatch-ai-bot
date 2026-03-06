@@ -52,8 +52,9 @@ Notes:
 - Base URL example: `http://glances:61208/api/4`
 - Glances auth is optional in this setup (works without auth if Glances is not
   started with `--password`)
-- The bot logs an aggregated Glances payload at `INFO` level for diagnostics
-  (visible in container logs, e.g. Portainer)
+- By default, the bot logs only aggregated payload keys at `DEBUG` level.
+- Set `GLANCES_LOG_FULL_PAYLOAD=true` to log the full aggregated Glances JSON
+  at `INFO` level for diagnostics (for example in container logs).
 
 ## Commands
 
@@ -116,6 +117,8 @@ Notes:
 | `TELEGRAM_BOT_TOKEN` | ✅ | — | Token from BotFather |
 | `TELEGRAM_CHAT_ID` | ✅ | — | Authorized chat ID |
 | `GLANCES_BASE_URL` | | `http://glances:61208/api/4` | Glances API base URL |
+| `GLANCES_REQUEST_TIMEOUT_SECONDS` | | `8.0` | Per-endpoint Glances request timeout |
+| `GLANCES_LOG_FULL_PAYLOAD` | | `false` | Log full aggregated Glances payload at `INFO` |
 | `OLLAMA_BASE_URL` | | `http://host.docker.internal:11434` | Ollama API base URL |
 | `OLLAMA_MODEL` | | `llama3.2:3b` | Default Ollama model |
 | `OPENAI_API_KEY` | | — | Optional OpenAI API key |
