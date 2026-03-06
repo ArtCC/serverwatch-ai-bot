@@ -96,6 +96,10 @@ def register(app: Application) -> None:
     """Register the periodic alert check job on the Application's job queue."""
     cfg = get_config()
     interval = cfg.alert_check_interval_seconds
+    if interval <= 0:
+        logger.info("Alert scheduler disabled (ALERT_CHECK_INTERVAL_SECONDS=%d)", interval)
+        return
+
     if app.job_queue is None:
         logger.error(
             "Job queue is not available — alert scheduler cannot start. "

@@ -158,7 +158,11 @@ async def stream_chat(selection: str, system: str, user_message: str) -> AsyncIt
     provider, model = split_model_selection(selection)
 
     if provider == "ollama":
-        async for chunk in ollama.chat_stream(model, system, user_message):
+        async for chunk in _stream_with_fallback(
+            stream_factory=lambda: ollama.chat_stream(model, system, user_message),
+            final_factory=lambda: ollama.chat(model, system, user_message),
+            provider="ollama",
+        ):
             yield chunk
         return
     if provider == "openai":
@@ -201,13 +205,15 @@ async def _stream_with_fallback(
         async for chunk in stream_factory():
             emitted_any = True
             yield chunk
-        return
     except Exception:
         if emitted_any:
             raise
         logger.warning(
             "%s streaming failed before first chunk. Falling back to non-stream.", provider
         )
+
+    if emitted_any:
+        return
 
     full = await final_factory()
     if isinstance(full, str) and full:

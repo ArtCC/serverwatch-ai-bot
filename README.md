@@ -128,7 +128,7 @@ Notes:
 | `TZ` | | `UTC` | Timezone |
 | `SQLITE_PATH` | | `/app/data/serverwatch.db` | SQLite path |
 | `DATA_PATH` | | `/opt/docker/serverwatch-ai-bot/data` | Host path mounted into `/app/data` |
-| `ALERT_CHECK_INTERVAL_SECONDS` | | `60` | Alert scan interval |
+| `ALERT_CHECK_INTERVAL_SECONDS` | | `60` | Alert scan interval (`0` disables scheduler polling) |
 | `ALERT_COOLDOWN_SECONDS` | | `300` | Alert cooldown |
 | `ALERT_DEFAULT_CPU_THRESHOLD` | | `85` | Default CPU threshold |
 | `ALERT_DEFAULT_RAM_THRESHOLD` | | `85` | Default RAM threshold |
