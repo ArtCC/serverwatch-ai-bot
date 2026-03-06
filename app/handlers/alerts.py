@@ -11,8 +11,9 @@ Flow:
 from __future__ import annotations
 
 import logging
+from typing import cast
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Message, Update
 from telegram.constants import ChatAction, ParseMode
 from telegram.ext import (
     Application,
@@ -40,6 +41,7 @@ _CB_EDIT_RAM = "alrt_edit_ram"
 _CB_EDIT_DISK = "alrt_edit_disk"
 _CB_CONFIRM = "alrt_ok:"  # alrt_ok:<metric>:<value>
 _CB_CANCEL = "alrt_cancel"
+_CB_CLOSE = "alrt_close"
 
 # context.user_data keys
 _UD_METRIC = "alrt_metric"
@@ -112,6 +114,13 @@ def _edit_keyboard(locale: str) -> InlineKeyboardMarkup:
                     ),
                     callback_data=_CB_EDIT_DISK,
                 ),
+            ]
+            ,
+            [
+                InlineKeyboardButton(
+                    t("alerts.cancel_button", locale=locale),
+                    callback_data=_CB_CLOSE,
+                )
             ]
         ]
     )
@@ -316,6 +325,22 @@ async def cb_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 
+@restricted
+async def cb_close(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Close the alerts panel by deleting the current message."""
+    query = update.callback_query
+    if query is None:
+        return
+    await query.answer()
+
+    if query.message is None:
+        return
+    try:
+        await cast(Message, query.message).delete()
+    except Exception:
+        logger.warning("Could not delete alerts message on close", exc_info=True)
+
+
 # ---------------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------------
@@ -348,3 +373,4 @@ def register(app: Application) -> None:
     app.add_handler(conv)
     app.add_handler(CallbackQueryHandler(cb_confirm, pattern=f"^{_CB_CONFIRM}"))
     app.add_handler(CallbackQueryHandler(cb_cancel, pattern=f"^{_CB_CANCEL}$"))
+    app.add_handler(CallbackQueryHandler(cb_close, pattern=f"^{_CB_CLOSE}$"))

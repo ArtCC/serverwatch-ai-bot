@@ -56,6 +56,7 @@
     "provider_anthropic": "Anthropic (nube)",
     "provider_deepseek": "DeepSeek (nube)",
     "confirm_change": "¿Establecer {model} como modelo activo?",
+    "change_button": "🔄 Cambiar modelo",
     "confirm_button": "✅ Confirmar",
     "cancel_button": "❌ Cancelar",
     "updated": "✅ Modelo activo establecido: {model}.",

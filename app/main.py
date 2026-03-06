@@ -30,10 +30,10 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
     if isinstance(update, Update) and update.effective_message:
         locale = locale_from_update(update, fallback=get_config().bot_locale)
         key = "errors.general"
-        if isinstance(err, (TimedOut, NetworkError, httpx.TimeoutException, httpx.HTTPError)):
-            key = "errors.service_unavailable"
-        elif isinstance(err, BadRequest):
+        if isinstance(err, BadRequest):
             key = "errors.telegram_bad_request"
+        elif isinstance(err, (TimedOut, NetworkError, httpx.TimeoutException, httpx.HTTPError)):
+            key = "errors.service_unavailable"
 
         await update.effective_message.reply_text(
             t(key, locale=locale),

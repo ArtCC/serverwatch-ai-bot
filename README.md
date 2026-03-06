@@ -40,6 +40,7 @@ bot queries this fixed bundle in parallel:
 - `/network`
 - `/containers`
 - `/processlist/top/10`
+- `/smart`
 - `/sensors`
 - `/system`
 - `/core`

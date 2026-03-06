@@ -11,8 +11,9 @@ Flow:
 from __future__ import annotations
 
 import logging
+from typing import cast
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Message, Update
 from telegram.constants import ChatAction
 from telegram.ext import (
     Application,
@@ -36,6 +37,8 @@ logger = logging.getLogger("serverwatch")
 _CB_SELECT = "mdl_sel:"  # mdl_sel:<token>
 _CB_CONFIRM = "mdl_ok:"  # mdl_ok:<token>
 _CB_CANCEL = "mdl_cancel"
+_CB_CLOSE = "mdl_close"
+_CB_CHANGE = "mdl_change"
 _UD_CHOICES = "mdl_choices"
 
 
@@ -92,7 +95,35 @@ def _models_keyboard(
         )
         idx += 1
 
+    rows.append(
+        [
+            InlineKeyboardButton(
+                t("models.cancel_button", locale=locale),
+                callback_data=_CB_CLOSE,
+            )
+        ]
+    )
+
     return InlineKeyboardMarkup(rows), mapping
+
+
+def _overview_keyboard(locale: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    t("models.change_button", locale=locale),
+                    callback_data=_CB_CHANGE,
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    t("models.cancel_button", locale=locale),
+                    callback_data=_CB_CLOSE,
+                )
+            ],
+        ]
+    )
 
 
 def _confirm_keyboard(locale: str, token: str) -> InlineKeyboardMarkup:
@@ -181,6 +212,7 @@ async def _show_models(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     edit: bool = False,
+    selection_mode: bool = False,
 ) -> None:
     """Fetch models and active model, then send or edit the message."""
     locale = locale_from_update(update, fallback=get_config().bot_locale)
@@ -223,9 +255,14 @@ async def _show_models(
         return
 
     text = _build_models_text(options, active, locale, ollama_unavailable)
-    keyboard, mapping = _models_keyboard(options, active, locale)
-    if context.user_data is not None:
-        context.user_data[_UD_CHOICES] = mapping
+    if selection_mode:
+        keyboard, mapping = _models_keyboard(options, active, locale)
+        if context.user_data is not None:
+            context.user_data[_UD_CHOICES] = mapping
+    else:
+        keyboard = _overview_keyboard(locale)
+        if context.user_data is not None:
+            context.user_data.pop(_UD_CHOICES, None)
 
     if edit and update.callback_query:
         await update.callback_query.edit_message_text(text, reply_markup=keyboard)
@@ -306,6 +343,16 @@ async def cb_select(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 @restricted
+async def cb_change(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """User requested model change — show selectable model buttons."""
+    query = update.callback_query
+    if query is None:
+        return
+    await query.answer()
+    await _show_models(update, context, edit=True, selection_mode=True)
+
+
+@restricted
 async def cb_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """User confirmed a model change — persist and acknowledge."""
     query = update.callback_query
@@ -345,6 +392,22 @@ async def cb_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await query.edit_message_text(t("models.cancelled", locale=locale))
 
 
+@restricted
+async def cb_close(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Close the models panel by deleting the current message."""
+    query = update.callback_query
+    if query is None:
+        return
+    await query.answer()
+
+    if query.message is None:
+        return
+    try:
+        await cast(Message, query.message).delete()
+    except Exception:
+        logger.warning("Could not delete models message on close", exc_info=True)
+
+
 # ---------------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------------
@@ -360,5 +423,7 @@ def register(app: Application) -> None:
         )
     )
     app.add_handler(CallbackQueryHandler(cb_select, pattern=f"^{_CB_SELECT}"))
+    app.add_handler(CallbackQueryHandler(cb_change, pattern=f"^{_CB_CHANGE}$"))
     app.add_handler(CallbackQueryHandler(cb_confirm, pattern=f"^{_CB_CONFIRM}"))
     app.add_handler(CallbackQueryHandler(cb_cancel, pattern=f"^{_CB_CANCEL}$"))
+    app.add_handler(CallbackQueryHandler(cb_close, pattern=f"^{_CB_CLOSE}$"))

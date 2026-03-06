@@ -41,6 +41,7 @@ _ENDPOINTS: tuple[tuple[str, str], ...] = (
     ("network", "/network"),
     ("containers", "/containers"),
     ("processlist", "/processlist/top/10"),
+    ("smart", "/smart"),
     ("sensors", "/sensors"),
     ("system", "/system"),
     ("core", "/core"),

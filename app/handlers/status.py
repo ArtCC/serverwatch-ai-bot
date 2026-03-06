@@ -8,9 +8,11 @@ Flow:
 from __future__ import annotations
 
 import logging
+from typing import cast
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Message, Update
 from telegram.constants import ChatAction
+from telegram.error import BadRequest
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -55,7 +57,13 @@ async def _render(update: Update, edit: bool = False) -> None:
     keyboard = _refresh_keyboard(locale)
 
     if edit and update.callback_query:
-        await update.callback_query.edit_message_text(text, reply_markup=keyboard)
+        try:
+            await update.callback_query.edit_message_text(text, reply_markup=keyboard)
+        except BadRequest as exc:
+            # Common when refresh is pressed and metrics text has not changed.
+            if "message is not modified" in str(exc).lower():
+                return
+            logger.warning("Could not edit status message on refresh: %s", exc)
     elif update.effective_message:
         await update.effective_message.reply_text(text, reply_markup=keyboard)
 
@@ -88,7 +96,14 @@ async def cb_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await query.answer()
     if update.effective_chat:
         await update.effective_chat.send_action(ChatAction.TYPING)
-    await _render(update, edit=True)
+
+    if query.message is not None:
+        try:
+            await cast(Message, query.message).delete()
+        except Exception:
+            logger.warning("Could not delete previous status message on refresh", exc_info=True)
+
+    await _render(update, edit=False)
 
 
 def register(app: Application) -> None:
