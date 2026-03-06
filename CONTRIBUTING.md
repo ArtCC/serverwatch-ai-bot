@@ -67,7 +67,7 @@ docker compose up --build
 app/
   core/        # Config, auth, store
   handlers/    # Telegram update handlers
-  services/    # Glances, Ollama, scheduler clients
+  services/    # Glances, LLM routing and provider clients
   utils/       # Formatting helpers, i18n
 locale/        # JSON locale files (en.json, ...)
 ```
@@ -80,7 +80,8 @@ locale/        # JSON locale files (en.json, ...)
 - Follow the existing code style (enforced by `ruff`).
 - Use type hints everywhere.
 - Add or update entries in `locale/en.json` for any user-facing text.
-- Update `CHANGELOG.md` under `[Unreleased]` for every notable change.
+- Keep notable changes documented in PR descriptions; `CHANGELOG.md` is curated
+  before tagging each release.
 
 ---
 
@@ -98,7 +99,7 @@ Examples:
 
 ```
 feat(handlers): add /status command
-fix(scheduler): prevent duplicate alerts during cooldown
+fix(alerts): prevent duplicate notifications during cooldown
 docs: update README deployment section
 ```
 
@@ -107,9 +108,8 @@ docs: update README deployment section
 ## Pull Request Process
 
 1. Ensure `ruff` and `mypy` pass with no errors.
-2. Update `CHANGELOG.md` under `[Unreleased]`.
-3. Fill in the pull request template with a clear description.
-4. Request a review — the PR will be merged once approved.
+2. Fill in the pull request template with a clear description.
+3. Request a review — the PR will be merged once approved.
 
 ---
 
