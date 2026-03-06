@@ -13,8 +13,9 @@ from __future__ import annotations
 
 import logging
 
-from telegram import Update
+from telegram import Message, Update
 from telegram.constants import ChatAction, ParseMode
+from telegram.error import BadRequest, NetworkError, TimedOut
 from telegram.ext import Application, ContextTypes, MessageHandler, filters
 
 from app.core import store
@@ -137,6 +138,34 @@ def _quick_glances_decision(user_message: str) -> bool | None:
     return None
 
 
+async def _safe_edit_or_reply(
+    *,
+    source_message: Message,
+    placeholder: Message | None,
+    text: str,
+    parse_mode: str | None = None,
+) -> None:
+    """Try editing placeholder first; fallback to a new reply on Telegram failures."""
+    if placeholder is not None:
+        try:
+            await placeholder.edit_text(text, parse_mode=parse_mode)
+            return
+        except BadRequest as exc:
+            # Harmless in case of duplicate updates/races.
+            if "message is not modified" in str(exc).lower():
+                return
+            logger.warning("Could not edit placeholder message: %s", exc)
+        except (TimedOut, NetworkError):
+            logger.warning("Telegram timeout/network error while editing placeholder")
+        except Exception:
+            logger.exception("Unexpected error while editing placeholder")
+
+    try:
+        await source_message.reply_text(text, parse_mode=parse_mode)
+    except Exception:
+        logger.exception("Fallback reply_text failed")
+
+
 @restricted
 async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.effective_message
@@ -151,10 +180,16 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if update.effective_chat:
         await update.effective_chat.send_action(ChatAction.TYPING)
 
-    placeholder = await message.reply_text(
-        t("chat.thinking", locale=locale),
-        parse_mode=ParseMode.MARKDOWN,
-    )
+    placeholder: Message | None = None
+    try:
+        placeholder = await message.reply_text(
+            t("chat.thinking", locale=locale),
+            parse_mode=ParseMode.MARKDOWN,
+        )
+    except (TimedOut, NetworkError):
+        logger.warning("Telegram timeout/network error while sending thinking placeholder")
+    except Exception:
+        logger.exception("Unexpected error while sending thinking placeholder")
 
     # Fetch metrics (non-blocking failure)
     system_prompt: str
@@ -188,8 +223,10 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         reply = await llm_router.chat(selection, system_prompt, message.text)
     except Exception:
         logger.exception("LLM chat request failed for provider=%s", provider)
-        await placeholder.edit_text(
-            t("chat.provider_error", locale=locale, provider=_provider_display_name(provider)),
+        await _safe_edit_or_reply(
+            source_message=message,
+            placeholder=placeholder,
+            text=t("chat.provider_error", locale=locale, provider=_provider_display_name(provider)),
             parse_mode=ParseMode.MARKDOWN,
         )
         return
@@ -198,7 +235,7 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if len(reply) > 4096:
         reply = reply[:4090] + "…"
 
-    await placeholder.edit_text(reply)
+    await _safe_edit_or_reply(source_message=message, placeholder=placeholder, text=reply)
 
 
 def register(app: Application) -> None:
