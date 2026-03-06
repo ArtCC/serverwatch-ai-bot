@@ -38,7 +38,7 @@ Respond in plain text — no markdown, no code blocks unless explicitly asked.
 Keep answers short and actionable.
 Always reply in the user's language (locale: {locale}).
 
-Current server metrics (raw Glances /all JSON payload):
+Current server metrics (aggregated Glances JSON payload):
 {metrics_json}
 """
 
@@ -48,7 +48,17 @@ The user is querying you from Telegram about their server.
 Respond in plain text — no markdown, no code blocks unless explicitly asked.
 Keep answers short and actionable.
 Always reply in the user's language (locale: {locale}).
-Note: live server metrics are currently unavailable.
+"""
+
+_SYSTEM_METRICS_UNAVAILABLE = """\
+You are ServerWatch, a concise and helpful server monitoring assistant.
+The user is querying you from Telegram about their server.
+Respond in plain text — no markdown, no code blocks unless explicitly asked.
+Keep answers short and actionable.
+Always reply in the user's language (locale: {locale}).
+Live server metrics were requested for this answer, but they are currently unavailable.
+If needed, briefly mention that live metrics are unavailable right now,
+then continue with best-effort guidance.
 """
 
 _TOOL_DECIDER_SYSTEM = """\
@@ -227,7 +237,10 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             system_prompt = _SYSTEM_NO_METRICS.format(locale=locale)
     except Exception:
         logger.warning("Could not fetch Glances snapshot for chat context")
-        system_prompt = _SYSTEM_NO_METRICS.format(locale=locale)
+        if use_glances:
+            system_prompt = _SYSTEM_METRICS_UNAVAILABLE.format(locale=locale)
+        else:
+            system_prompt = _SYSTEM_NO_METRICS.format(locale=locale)
 
     # Query LLM (streaming when supported by provider)
     reply_accumulated = ""
