@@ -6,6 +6,7 @@ the data the bot currently needs to persist.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from pathlib import Path
 
@@ -20,6 +21,9 @@ _KEY_CPU_THRESHOLD = "threshold_cpu"
 _KEY_RAM_THRESHOLD = "threshold_ram"
 _KEY_DISK_THRESHOLD = "threshold_disk"
 _VALID_PROVIDERS = {"ollama", "openai", "anthropic", "deepseek"}
+_db: aiosqlite.Connection | None = None
+_db_lock = asyncio.Lock()
+_db_init_lock = asyncio.Lock()
 
 
 def normalize_model_selection(value: str) -> str:
@@ -45,13 +49,37 @@ def _db_path() -> str:
     return get_config().sqlite_path
 
 
+async def _get_db() -> aiosqlite.Connection:
+    """Return a shared SQLite connection for the whole runtime."""
+    global _db
+
+    async with _db_init_lock:
+        if _db is not None:
+            return _db
+
+        path = _db_path()
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        _db = await aiosqlite.connect(path)
+        return _db
+
+
+async def close_db() -> None:
+    """Close the shared SQLite connection on app shutdown."""
+    global _db
+
+    async with _db_lock:
+        if _db is None:
+            return
+        await _db.close()
+        _db = None
+
+
 async def init_db() -> None:
     """Create schema and seed default values on first run."""
-    path = _db_path()
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
     cfg = get_config()
 
-    async with aiosqlite.connect(path) as db:
+    db = await _get_db()
+    async with _db_lock:
         await db.execute(
             """
             CREATE TABLE IF NOT EXISTS settings (
@@ -79,14 +107,16 @@ async def init_db() -> None:
 
 
 async def _get(key: str) -> str | None:
-    async with aiosqlite.connect(_db_path()) as db:
+    async with _db_lock:
+        db = await _get_db()
         async with db.execute("SELECT value FROM settings WHERE key = ?", (key,)) as cursor:
             row = await cursor.fetchone()
     return str(row[0]) if row else None
 
 
 async def _set(key: str, value: str) -> None:
-    async with aiosqlite.connect(_db_path()) as db:
+    async with _db_lock:
+        db = await _get_db()
         await db.execute(
             "INSERT INTO settings (key, value) VALUES (?, ?) "
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -121,7 +151,8 @@ async def set_active_model(model: str) -> None:
 async def get_thresholds() -> tuple[float, float, float]:
     """Return (cpu, ram, disk) thresholds in a single DB round-trip."""
     keys = (_KEY_CPU_THRESHOLD, _KEY_RAM_THRESHOLD, _KEY_DISK_THRESHOLD)
-    async with aiosqlite.connect(_db_path()) as db:
+    async with _db_lock:
+        db = await _get_db()
         async with db.execute(
             "SELECT key, value FROM settings WHERE key IN (?, ?, ?)", keys
         ) as cursor:

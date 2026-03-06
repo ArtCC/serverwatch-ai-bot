@@ -63,10 +63,11 @@ async def post_init(application: Application) -> None:
 
 async def post_shutdown(application: Application) -> None:
     """Release shared service resources created during runtime."""
+    await store.close_db()
     await glances_service.close_client()
     await llm_router_service.close_client()
     await ollama_service.close_clients()
-    logger.info("Service HTTP clients closed")
+    logger.info("Runtime resources closed")
 
 
 def main() -> None:

@@ -165,26 +165,32 @@ async def _safe_edit_or_reply(
     placeholder: Message | None,
     text: str,
     parse_mode: str | None = None,
-) -> None:
+    allow_fallback_reply: bool = True,
+) -> bool:
     """Try editing placeholder first; fallback to a new reply on Telegram failures."""
     if placeholder is not None:
         try:
             await placeholder.edit_text(text, parse_mode=parse_mode)
-            return
+            return True
         except BadRequest as exc:
             # Harmless in case of duplicate updates/races.
             if "message is not modified" in str(exc).lower():
-                return
+                return True
             logger.warning("Could not edit placeholder message: %s", exc)
         except (TimedOut, NetworkError):
             logger.warning("Telegram timeout/network error while editing placeholder")
         except Exception:
             logger.exception("Unexpected error while editing placeholder")
 
+    if not allow_fallback_reply:
+        return False
+
     try:
         await source_message.reply_text(text, parse_mode=parse_mode)
+        return True
     except Exception:
         logger.exception("Fallback reply_text failed")
+        return False
 
 
 @restricted
@@ -247,6 +253,7 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     last_pushed = ""
     last_edit_at = 0.0
     last_typing_at = time.monotonic()
+    stream_push_enabled = True
 
     try:
         async for chunk in llm_router.stream_chat(selection, system_prompt, message.text):
@@ -266,14 +273,23 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 await update.effective_chat.send_action(ChatAction.TYPING)
                 last_typing_at = now
 
-            if candidate != last_pushed and (now - last_edit_at) >= _STREAM_EDIT_INTERVAL_SECONDS:
-                await _safe_edit_or_reply(
+            if (
+                stream_push_enabled
+                and candidate != last_pushed
+                and (now - last_edit_at) >= _STREAM_EDIT_INTERVAL_SECONDS
+            ):
+                pushed = await _safe_edit_or_reply(
                     source_message=message,
                     placeholder=placeholder,
                     text=candidate,
+                    allow_fallback_reply=False,
                 )
-                last_pushed = candidate
-                last_edit_at = now
+                if pushed:
+                    last_pushed = candidate
+                    last_edit_at = now
+                else:
+                    # Avoid repeated partial fallback replies if placeholder edits keep failing.
+                    stream_push_enabled = False
     except Exception:
         logger.exception("LLM chat request failed for provider=%s", provider)
         await _safe_edit_or_reply(

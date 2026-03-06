@@ -5,6 +5,7 @@ import logging
 from telegram import ReplyKeyboardMarkup, Update
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
+from telegram.helpers import escape_markdown
 
 from app.core.auth import restricted
 from app.core.config import get_config
@@ -29,7 +30,8 @@ def build_main_keyboard(locale: str) -> ReplyKeyboardMarkup:
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /start — detect locale, send personalised greeting, show keyboard."""
     user = update.effective_user
-    name = user.first_name if user and user.first_name else "there"
+    raw_name = user.first_name if user and user.first_name else "there"
+    name = escape_markdown(raw_name)
     locale = locale_from_update(update, fallback=get_config().bot_locale)
 
     logger.info(
