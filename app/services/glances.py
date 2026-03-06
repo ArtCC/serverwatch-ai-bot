@@ -125,9 +125,7 @@ async def get_snapshot() -> ServerSnapshot:
     )
 
 
-async def _fetch_all(
-    client: httpx.AsyncClient, base_url: str
-) -> httpx.Response:
+async def _fetch_all(client: httpx.AsyncClient, base_url: str) -> httpx.Response:
     """Fetch full metrics payload from /all endpoint."""
     response = await client.get(f"{base_url}/all")
     response.raise_for_status()
