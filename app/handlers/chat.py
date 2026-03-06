@@ -32,8 +32,8 @@ Respond in plain text — no markdown, no code blocks unless explicitly asked.
 Keep answers short and actionable.
 Always reply in the user's language (locale: {locale}).
 
-Current server metrics:
-{metrics}
+Current server metrics (raw Glances /all JSON payload):
+{metrics_json}
 """
 
 _SYSTEM_NO_METRICS = """\
@@ -90,7 +90,10 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     system_prompt: str
     try:
         snapshot = await glances.get_snapshot()
-        system_prompt = _SYSTEM_WITH_METRICS.format(locale=locale, metrics=snapshot.as_text())
+        system_prompt = _SYSTEM_WITH_METRICS.format(
+            locale=locale,
+            metrics_json=snapshot.as_raw_json(),
+        )
     except Exception:
         logger.warning("Could not fetch Glances snapshot for chat context")
         system_prompt = _SYSTEM_NO_METRICS.format(locale=locale)

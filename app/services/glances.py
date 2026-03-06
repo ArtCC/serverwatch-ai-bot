@@ -6,6 +6,7 @@ All functions raise httpx.HTTPError on connectivity / HTTP errors.
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass
 
@@ -36,6 +37,7 @@ class ServerSnapshot:
     docker_running: int
     docker_total: int
     top_processes: list[dict[str, object]]
+    raw_all: dict[str, object]
 
     # ------------------------------------------------------------------
     # Convenience helpers
@@ -62,21 +64,32 @@ class ServerSnapshot:
                 )
         return "\n".join(lines)
 
+    def as_raw_json(self) -> str:
+        """Return raw /all payload serialized as JSON."""
+        return json.dumps(self.raw_all, ensure_ascii=True)
+
 
 async def get_snapshot() -> ServerSnapshot:
-    """Fetch all required endpoints and return a ServerSnapshot."""
+    """Fetch /all once and return a ServerSnapshot."""
     base_url = get_config().glances_base_url.rstrip("/")
 
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-        cpu_r, mem_r, fs_r, load_r, uptime_r, docker_r, proc_r = await _fetch_all(client, base_url)
+        all_r = await _fetch_all(client, base_url)
 
-    cpu = cpu_r.json()
-    mem = mem_r.json()
-    disk = _pick_root_fs(fs_r.json())
-    load = load_r.json()
-    uptime = uptime_r.json()
-    containers = docker_r.json() if docker_r else []
-    processes = proc_r.json() if proc_r else []
+    payload = all_r.json()
+    if not isinstance(payload, dict):
+        payload = {}
+
+    logger.info("Glances /all payload: %s", json.dumps(payload, ensure_ascii=True))
+
+    cpu = payload.get("cpu") if isinstance(payload.get("cpu"), dict) else {}
+    mem = payload.get("mem") if isinstance(payload.get("mem"), dict) else {}
+    fs_data = payload.get("fs") if isinstance(payload.get("fs"), list) else []
+    disk = _pick_root_fs([e for e in fs_data if isinstance(e, dict)])
+    load = payload.get("load") if isinstance(payload.get("load"), dict) else {}
+    uptime = payload.get("uptime")
+    containers = payload.get("containers") if isinstance(payload.get("containers"), list) else []
+    processes = payload.get("processlist") if isinstance(payload.get("processlist"), list) else []
 
     gb = 1024**3
 
@@ -96,8 +109,8 @@ async def get_snapshot() -> ServerSnapshot:
     return ServerSnapshot(
         cpu_percent=float(cpu.get("total", 0.0)),
         ram_percent=float(mem.get("percent", 0.0)),
-        ram_used_gb=mem.get("used", 0) / gb,
-        ram_total_gb=mem.get("total", 1) / gb,
+        ram_used_gb=_num(mem.get("used", 0)) / gb,
+        ram_total_gb=max(_num(mem.get("total", 0)), 1.0) / gb,
         disk_percent=float(disk_percent),
         disk_used_gb=disk_used / gb,
         disk_total_gb=disk_size / gb,
@@ -108,50 +121,17 @@ async def get_snapshot() -> ServerSnapshot:
         docker_running=docker_running,
         docker_total=len(docker_all),
         top_processes=top[:5],
+        raw_all=payload,
     )
 
 
 async def _fetch_all(
     client: httpx.AsyncClient, base_url: str
-) -> tuple[
-    httpx.Response,
-    httpx.Response,
-    httpx.Response,
-    httpx.Response,
-    httpx.Response,
-    httpx.Response | None,
-    httpx.Response | None,
-]:
-    """Fire mandatory requests; Docker and process list are best-effort."""
-    import asyncio
-
-    cpu_task = client.get(f"{base_url}/cpu")
-    mem_task = client.get(f"{base_url}/mem")
-    fs_task = client.get(f"{base_url}/fs")
-    load_task = client.get(f"{base_url}/load")
-    uptime_task = client.get(f"{base_url}/uptime")
-
-    cpu_r, mem_r, fs_r, load_r, uptime_r = await asyncio.gather(
-        cpu_task, mem_task, fs_task, load_task, uptime_task
-    )
-    for r in (cpu_r, mem_r, fs_r, load_r, uptime_r):
-        r.raise_for_status()
-
-    docker_r: httpx.Response | None = None
-    proc_r: httpx.Response | None = None
-    try:
-        docker_r = await client.get(f"{base_url}/containers")
-        docker_r.raise_for_status()
-    except Exception:
-        logger.debug("Docker endpoint not available")
-
-    try:
-        proc_r = await client.get(f"{base_url}/processlist")
-        proc_r.raise_for_status()
-    except Exception:
-        logger.debug("Process list endpoint not available")
-
-    return cpu_r, mem_r, fs_r, load_r, uptime_r, docker_r, proc_r
+) -> httpx.Response:
+    """Fetch full metrics payload from /all endpoint."""
+    response = await client.get(f"{base_url}/all")
+    response.raise_for_status()
+    return response
 
 
 def _num(value: object) -> float:
