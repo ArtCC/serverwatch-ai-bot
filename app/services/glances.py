@@ -129,7 +129,7 @@ async def _fetch_snapshot() -> ServerSnapshot:
     base_url = cfg.glances_base_url.rstrip("/")
 
     async with httpx.AsyncClient(timeout=_request_timeout()) as client:
-        payload = await _fetch_all(client, base_url, cfg.glances_bundle_timeout_seconds)
+        payload = await _fetch_all(client, base_url)
 
     if cfg.glances_log_full_payload:
         logger.info("Glances aggregated payload: %s", json.dumps(payload, ensure_ascii=True))
@@ -179,52 +179,26 @@ async def _fetch_snapshot() -> ServerSnapshot:
     )
 
 
-async def _fetch_all(
-    client: httpx.AsyncClient, base_url: str, bundle_timeout_seconds: float
-) -> dict[str, object]:
-    """Fetch a fixed bundle of Glances endpoints and aggregate responses."""
-    if bundle_timeout_seconds <= 0:
-        request_coros = [client.get(f"{base_url}{path}") for _, path in _ENDPOINTS]
-        responses = await asyncio.gather(*request_coros, return_exceptions=True)
+async def _fetch_all(client: httpx.AsyncClient, base_url: str) -> dict[str, object]:
+    """Fetch all Glances endpoints concurrently and aggregate responses.
 
-        payload_full: dict[str, object] = {}
-        for (key, path), result in zip(_ENDPOINTS, responses, strict=False):
-            if isinstance(result, BaseException):
-                payload_full[key] = {"_error": str(result), "_endpoint": path}
-                continue
-            try:
-                result.raise_for_status()
-                payload_full[key] = result.json()
-            except Exception as exc:  # noqa: BLE001
-                payload_full[key] = {"_error": str(exc), "_endpoint": path}
-        return payload_full
+    The flow intentionally waits for every endpoint request to complete (or fail
+    by per-request timeout) before returning. This avoids cutting pending calls
+    mid-flight and guarantees a complete best-effort bundle for the LLM context.
+    """
 
-    pending_tasks: dict[asyncio.Task[httpx.Response], tuple[str, str]] = {
-        asyncio.create_task(client.get(f"{base_url}{path}")): (key, path)
-        for key, path in _ENDPOINTS
-    }
-
-    done, pending = await asyncio.wait(
-        pending_tasks.keys(),
-        timeout=max(bundle_timeout_seconds, 0.1),
-    )
-
-    payload_partial: dict[str, object] = {}
-    for task in done:
-        key, path = pending_tasks[task]
+    async def _fetch_endpoint(key: str, path: str) -> tuple[str, object]:
         try:
-            result = task.result()
-            result.raise_for_status()
-            payload_partial[key] = result.json()
+            response = await client.get(f"{base_url}{path}")
+            response.raise_for_status()
+            return key, response.json()
         except Exception as exc:  # noqa: BLE001
-            payload_partial[key] = {"_error": str(exc), "_endpoint": path}
+            return key, {"_error": str(exc), "_endpoint": path}
 
-    for task in pending:
-        key, path = pending_tasks[task]
-        task.cancel()
-        payload_partial[key] = {"_error": "timeout", "_endpoint": path}
-
-    return payload_partial
+    results = await asyncio.gather(
+        *(_fetch_endpoint(key, path) for key, path in _ENDPOINTS),
+    )
+    return {key: value for key, value in results}
 
 
 def _num(value: object) -> float:

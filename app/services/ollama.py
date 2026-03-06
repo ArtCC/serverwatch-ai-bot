@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import logging
+from collections.abc import AsyncIterator
 
 import httpx
 
@@ -69,3 +71,44 @@ async def chat(model: str, system: str, user_message: str) -> str:
     if not isinstance(content, str):
         raise ValueError("Ollama response 'message.content' is missing or not a string")
     return content
+
+
+async def chat_stream(model: str, system: str, user_message: str) -> AsyncIterator[str]:
+    """Send a streaming chat request and yield incremental text chunks.
+
+    Uses /api/chat with stream=true and yields message.content fragments as they
+    arrive. Raises httpx.HTTPError on connectivity / HTTP errors.
+    """
+    base_url = get_config().ollama_base_url.rstrip("/")
+    payload = {
+        "model": model,
+        "stream": True,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user_message},
+        ],
+    }
+
+    async with httpx.AsyncClient(timeout=_TIMEOUT_CHAT) as client:
+        async with client.stream("POST", f"{base_url}/api/chat", json=payload) as resp:
+            resp.raise_for_status()
+
+            async for line in resp.aiter_lines():
+                line = line.strip()
+                if not line:
+                    continue
+
+                try:
+                    data = json.loads(line)
+                except json.JSONDecodeError:
+                    logger.warning("Skipping invalid JSON chunk from Ollama stream")
+                    continue
+
+                if not isinstance(data, dict):
+                    continue
+
+                message = data.get("message")
+                if isinstance(message, dict):
+                    content = message.get("content")
+                    if isinstance(content, str) and content:
+                        yield content

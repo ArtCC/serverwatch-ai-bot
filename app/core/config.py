@@ -9,7 +9,6 @@ class Config:
     telegram_bot_token: str
     telegram_chat_id: int
     glances_base_url: str
-    glances_bundle_timeout_seconds: float
     glances_request_timeout_seconds: float
     glances_log_full_payload: bool
     ollama_base_url: str
@@ -44,9 +43,6 @@ class Config:
             telegram_bot_token=token,
             telegram_chat_id=int(raw_chat_id),
             glances_base_url=os.getenv("GLANCES_BASE_URL", "http://glances:61208/api/4"),
-            glances_bundle_timeout_seconds=float(
-                os.getenv("GLANCES_BUNDLE_TIMEOUT_SECONDS", "2.5")
-            ),
             glances_request_timeout_seconds=float(
                 os.getenv("GLANCES_REQUEST_TIMEOUT_SECONDS", "8.0")
             ),

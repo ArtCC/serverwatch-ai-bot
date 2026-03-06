@@ -12,6 +12,7 @@ Flow:
 from __future__ import annotations
 
 import logging
+import time
 
 from telegram import Message, Update
 from telegram.constants import ChatAction, ParseMode
@@ -25,6 +26,10 @@ from app.services import glances, llm_router
 from app.utils.i18n import locale_from_update, t, text_matches_key
 
 logger = logging.getLogger("serverwatch")
+
+_STREAM_EDIT_INTERVAL_SECONDS = 0.8
+_STREAM_TYPING_INTERVAL_SECONDS = 4.0
+_TELEGRAM_MAX_TEXT_LENGTH = 4096
 
 _SYSTEM_WITH_METRICS = """\
 You are ServerWatch, a concise and helpful server monitoring assistant.
@@ -138,6 +143,12 @@ def _quick_glances_decision(user_message: str) -> bool | None:
     return None
 
 
+def _truncate_for_telegram(text: str) -> str:
+    if len(text) <= _TELEGRAM_MAX_TEXT_LENGTH:
+        return text
+    return text[: _TELEGRAM_MAX_TEXT_LENGTH - 1] + "…"
+
+
 async def _safe_edit_or_reply(
     *,
     source_message: Message,
@@ -218,9 +229,38 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         logger.warning("Could not fetch Glances snapshot for chat context")
         system_prompt = _SYSTEM_NO_METRICS.format(locale=locale)
 
-    # Query LLM
+    # Query LLM (streaming when supported by provider)
+    reply_accumulated = ""
+    last_pushed = ""
+    last_edit_at = 0.0
+    last_typing_at = time.monotonic()
+
     try:
-        reply = await llm_router.chat(selection, system_prompt, message.text)
+        async for chunk in llm_router.stream_chat(selection, system_prompt, message.text):
+            if not chunk:
+                continue
+
+            reply_accumulated += chunk
+
+            # Without a placeholder we avoid sending many partial replies.
+            if placeholder is None:
+                continue
+
+            now = time.monotonic()
+            candidate = _truncate_for_telegram(reply_accumulated)
+
+            if update.effective_chat and (now - last_typing_at) >= _STREAM_TYPING_INTERVAL_SECONDS:
+                await update.effective_chat.send_action(ChatAction.TYPING)
+                last_typing_at = now
+
+            if candidate != last_pushed and (now - last_edit_at) >= _STREAM_EDIT_INTERVAL_SECONDS:
+                await _safe_edit_or_reply(
+                    source_message=message,
+                    placeholder=placeholder,
+                    text=candidate,
+                )
+                last_pushed = candidate
+                last_edit_at = now
     except Exception:
         logger.exception("LLM chat request failed for provider=%s", provider)
         await _safe_edit_or_reply(
@@ -231,11 +271,13 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         )
         return
 
-    # Telegram messages can be 4096 chars max
-    if len(reply) > 4096:
-        reply = reply[:4090] + "…"
+    if not reply_accumulated.strip():
+        reply_accumulated = t("chat.error", locale=locale)
 
-    await _safe_edit_or_reply(source_message=message, placeholder=placeholder, text=reply)
+    final_reply = _truncate_for_telegram(reply_accumulated)
+
+    if final_reply != last_pushed or placeholder is None:
+        await _safe_edit_or_reply(source_message=message, placeholder=placeholder, text=final_reply)
 
 
 def register(app: Application) -> None:

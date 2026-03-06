@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import logging
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 
 import httpx
@@ -149,6 +151,234 @@ async def chat(selection: str, system: str, user_message: str) -> str:
         return await _chat_deepseek(model, system, user_message)
 
     raise ValueError(f"Unsupported provider: {provider}")
+
+
+async def stream_chat(selection: str, system: str, user_message: str) -> AsyncIterator[str]:
+    """Yield chat output chunks when provider supports streaming."""
+    provider, model = split_model_selection(selection)
+
+    if provider == "ollama":
+        async for chunk in ollama.chat_stream(model, system, user_message):
+            yield chunk
+        return
+    if provider == "openai":
+        async for chunk in _stream_with_fallback(
+            stream_factory=lambda: _stream_openai(model, system, user_message),
+            final_factory=lambda: _chat_openai(model, system, user_message),
+            provider="openai",
+        ):
+            yield chunk
+        return
+    if provider == "anthropic":
+        async for chunk in _stream_with_fallback(
+            stream_factory=lambda: _stream_anthropic(model, system, user_message),
+            final_factory=lambda: _chat_anthropic(model, system, user_message),
+            provider="anthropic",
+        ):
+            yield chunk
+        return
+    if provider == "deepseek":
+        async for chunk in _stream_with_fallback(
+            stream_factory=lambda: _stream_deepseek(model, system, user_message),
+            final_factory=lambda: _chat_deepseek(model, system, user_message),
+            provider="deepseek",
+        ):
+            yield chunk
+        return
+
+    raise ValueError(f"Unsupported provider: {provider}")
+
+
+async def _stream_with_fallback(
+    *,
+    stream_factory: Callable[[], AsyncIterator[str]],
+    final_factory: Callable[[], Awaitable[str]],
+    provider: str,
+) -> AsyncIterator[str]:
+    """Try streaming first and fallback to a full response if nothing was emitted."""
+    emitted_any = False
+    try:
+        async for chunk in stream_factory():
+            emitted_any = True
+            yield chunk
+        return
+    except Exception:
+        if emitted_any:
+            raise
+        logger.warning(
+            "%s streaming failed before first chunk. Falling back to non-stream.", provider
+        )
+
+    full = await final_factory()
+    if isinstance(full, str) and full:
+        yield full
+
+
+async def _iter_sse_json(response: httpx.Response) -> AsyncIterator[dict[str, object]]:
+    """Parse SSE data lines containing JSON payloads."""
+    async for raw_line in response.aiter_lines():
+        line = raw_line.strip()
+        if not line or line.startswith(":") or not line.startswith("data:"):
+            continue
+
+        payload = line[5:].strip()
+        if not payload or payload == "[DONE]":
+            continue
+
+        try:
+            data = json.loads(payload)
+        except json.JSONDecodeError:
+            logger.warning("Skipping invalid JSON SSE payload")
+            continue
+
+        if isinstance(data, dict):
+            yield data
+
+
+def _extract_openai_like_delta(data: dict[str, object]) -> str:
+    choices = data.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return ""
+
+    first = choices[0]
+    if not isinstance(first, dict):
+        return ""
+
+    delta = first.get("delta")
+    if not isinstance(delta, dict):
+        return ""
+
+    content = delta.get("content")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        text_parts: list[str] = []
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            text = block.get("text")
+            if isinstance(text, str) and text:
+                text_parts.append(text)
+        return "".join(text_parts)
+    return ""
+
+
+async def _stream_openai(model: str, system: str, user_message: str) -> AsyncIterator[str]:
+    cfg = get_config()
+    if not cfg.openai_api_key:
+        raise ValueError("OPENAI_API_KEY is missing")
+
+    headers = {
+        "Authorization": f"Bearer {cfg.openai_api_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": model,
+        "stream": True,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user_message},
+        ],
+    }
+
+    async with httpx.AsyncClient(timeout=_TIMEOUT_CHAT) as client:
+        async with client.stream("POST", _OPENAI_URL, headers=headers, json=payload) as resp:
+            resp.raise_for_status()
+            async for data in _iter_sse_json(resp):
+                chunk = _extract_openai_like_delta(data)
+                if chunk:
+                    yield chunk
+
+
+async def _stream_deepseek(model: str, system: str, user_message: str) -> AsyncIterator[str]:
+    cfg = get_config()
+    if not cfg.deepseek_api_key:
+        raise ValueError("DEEPSEEK_API_KEY is missing")
+
+    headers = {
+        "Authorization": f"Bearer {cfg.deepseek_api_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": model,
+        "stream": True,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user_message},
+        ],
+    }
+
+    async with httpx.AsyncClient(timeout=_TIMEOUT_CHAT) as client:
+        async with client.stream("POST", _DEEPSEEK_URL, headers=headers, json=payload) as resp:
+            resp.raise_for_status()
+            async for data in _iter_sse_json(resp):
+                chunk = _extract_openai_like_delta(data)
+                if chunk:
+                    yield chunk
+
+
+async def _stream_anthropic(model: str, system: str, user_message: str) -> AsyncIterator[str]:
+    global _anthropic_web_search_supported
+
+    cfg = get_config()
+    if not cfg.anthropic_api_key:
+        raise ValueError("ANTHROPIC_API_KEY is missing")
+
+    headers = {
+        "x-api-key": cfg.anthropic_api_key,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+    }
+
+    base_payload: dict[str, object] = {
+        "model": model,
+        "max_tokens": 512,
+        "stream": True,
+        "system": system,
+        "messages": [{"role": "user", "content": user_message}],
+    }
+
+    use_tool = _anthropic_web_search_supported is not False
+    payload = dict(base_payload)
+    if use_tool:
+        payload["tools"] = [_anthropic_web_search_tool(model)]
+
+    try:
+        async for chunk in _stream_anthropic_once(headers=headers, payload=payload):
+            yield chunk
+        if use_tool and _anthropic_web_search_supported is None:
+            _anthropic_web_search_supported = True
+        return
+    except httpx.HTTPStatusError as exc:
+        if not use_tool or not _is_bad_request(exc):
+            raise
+        _anthropic_web_search_supported = False
+        logger.warning(
+            "Anthropic rejected web search parameters for streaming (400). "
+            "Retrying without web search."
+        )
+
+    async for chunk in _stream_anthropic_once(headers=headers, payload=base_payload):
+        yield chunk
+
+
+async def _stream_anthropic_once(
+    *, headers: dict[str, str], payload: dict[str, object]
+) -> AsyncIterator[str]:
+    async with httpx.AsyncClient(timeout=_TIMEOUT_CHAT) as client:
+        async with client.stream("POST", _ANTHROPIC_URL, headers=headers, json=payload) as resp:
+            resp.raise_for_status()
+            async for data in _iter_sse_json(resp):
+                event_type = data.get("type")
+                if event_type == "content_block_delta":
+                    delta = data.get("delta")
+                    if not isinstance(delta, dict):
+                        continue
+                    if delta.get("type") != "text_delta":
+                        continue
+                    text = delta.get("text")
+                    if isinstance(text, str) and text:
+                        yield text
 
 
 async def _chat_openai(model: str, system: str, user_message: str) -> str:

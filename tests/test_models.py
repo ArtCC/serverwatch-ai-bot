@@ -38,7 +38,6 @@ def test_configured_cloud_options_only_returns_fully_configured_providers() -> N
         telegram_bot_token="token",
         telegram_chat_id=1,
         glances_base_url="http://glances:61208/api/4",
-        glances_bundle_timeout_seconds=2.5,
         glances_request_timeout_seconds=8.0,
         glances_log_full_payload=False,
         ollama_base_url="http://host.docker.internal:11434",
