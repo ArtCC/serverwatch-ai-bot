@@ -1,4 +1,11 @@
 {
+  "commands": {
+    "start": "Iniciar y mostrar menu",
+    "status": "Mostrar metricas actuales",
+    "alerts": "Ver o actualizar umbrales",
+    "models": "Listar y cambiar modelo IA",
+    "help": "Mostrar ayuda de uso"
+  },
   "keyboard": {
     "status": "📊 Estado",
     "alerts": "🔔 Alertas",

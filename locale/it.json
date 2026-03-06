@@ -1,0 +1,90 @@
+{
+  "commands": {
+    "start": "Avvia e mostra menu",
+    "status": "Mostra metriche attuali server",
+    "alerts": "Vedi o aggiorna soglie alert",
+    "models": "Elenca e cambia modello IA",
+    "help": "Mostra guida all'uso"
+  },
+  "keyboard": {
+    "status": "📊 Stato",
+    "alerts": "🔔 Avvisi",
+    "models": "🤖 Modelli",
+    "help": "❓ Aiuto"
+  },
+  "start": {
+    "welcome": "👋 Ciao, *{name}*! Benvenuto in *ServerWatch*.\n\nMonitoro il tuo server e rispondo alle domande usando l'IA.\n\nUsa i pulsanti qui sotto oppure scrivi pure quello che vuoi."
+  },
+  "help": {
+    "text": "ℹ️ *ServerWatch — Aiuto*\n\n*Comandi*\n/status — Metriche attuali del server\n/alerts — Visualizza e configura le soglie di avviso\n/models — Opzioni modello disponibili (Ollama + provider cloud opzionali)\n/help — Mostra questo messaggio\n\n*Come funziona*\nScrivi una domanda in linguaggio naturale e raccoglierò metriche in tempo reale per rispondere usando il modello attivo.\n\n*Esempi di domande*\n• Quale processo sta usando più CPU?\n• Quanto spazio libero rimane su disco?\n• Il server sta andando bene in questo momento?"
+  },
+  "status": {
+    "header": "📊 Stato del server",
+    "cpu": "CPU",
+    "ram": "RAM",
+    "disk": "Disco",
+    "load": "Carico medio",
+    "uptime": "Tempo attivo",
+    "docker": "Docker",
+    "refresh_button": "🔄 Aggiorna",
+    "unavailable": "❌ Impossibile recuperare le metriche. Glances è in esecuzione?"
+  },
+  "alerts": {
+    "header": "🔔 *Soglie di avviso*",
+    "cpu_label": "CPU",
+    "ram_label": "RAM",
+    "disk_label": "Disco",
+    "threshold_line": "{metric}: *{value}%*",
+    "edit_button": "✏️ Modifica {metric}",
+    "prompt_new_value": "Inserisci la nuova soglia per *{metric}* (0-100):",
+    "invalid_value": "❌ Valore non valido. Inserisci un numero tra 0 e 100.",
+    "confirm_change": "Impostare la soglia di *{metric}* a *{value}%*?",
+    "confirm_button": "✅ Conferma",
+    "cancel_button": "❌ Annulla",
+    "updated": "✅ Soglia di *{metric}* aggiornata a *{value}%*.",
+    "cancelled": "ℹ️ Modifica annullata."
+  },
+  "models": {
+    "header": "🤖 Opzioni modello",
+    "active_line": "📍 Attivo: {model}",
+    "local_section": "🏠 Local (Ollama)",
+    "cloud_section": "☁️ Cloud",
+    "local_empty": "ℹ️ Nessun modello locale disponibile.",
+    "cloud_empty": "ℹ️ Nessun modello cloud configurato.",
+    "local_unavailable": "⚠️ Ollama non è disponibile al momento.",
+    "no_models": "ℹ️ Nessun modello trovato nell'istanza Ollama.",
+    "no_models_available": "ℹ️ Nessuna opzione modello disponibile. Configura Ollama e/o le credenziali dei provider cloud.",
+    "model_line": "• `{name}`",
+    "unavailable": "❌ Impossibile raggiungere Ollama. Il servizio è in esecuzione?",
+    "ollama_unavailable_note": "⚠️ Ollama non è disponibile al momento. Vengono mostrate solo le opzioni cloud configurate.",
+    "select_button": "Seleziona {model}",
+    "provider_ollama": "Ollama",
+    "provider_openai": "OpenAI",
+    "provider_anthropic": "Anthropic",
+    "provider_deepseek": "DeepSeek",
+    "confirm_change": "Impostare {model} come modello attivo?",
+    "change_button": "🔄 Cambia modello",
+    "confirm_button": "✅ Conferma",
+    "cancel_button": "❌ Annulla",
+    "updated": "✅ Modello attivo impostato su {model}.",
+    "cancelled": "ℹ️ Modifica annullata.",
+    "already_active": "ℹ️ {model} è già il modello attivo.",
+    "selection_expired": "⚠️ La selezione del modello è scaduta. Esegui di nuovo /models."
+  },
+  "chat": {
+    "thinking": "⏳ Sto pensando...",
+    "error": "❌ Si è verificato un errore durante la generazione della risposta. Riprova.",
+    "provider_error": "❌ Impossibile generare una risposta con {provider}. Controlla la disponibilità dell'API/servizio e riprova."
+  },
+  "errors": {
+    "unauthorized": "👋 Ciao! Questo è un bot privato ed è disponibile solo per il proprietario. Se pensi sia un errore, contatta l'amministratore.",
+    "general": "❌ Si è verificato un errore imprevisto. Riprova più tardi.",
+    "telegram_bad_request": "⚠️ Telegram ha rifiutato questo formato di messaggio. Riprova.",
+    "service_unavailable": "⚠️ Uno o più servizi non sono raggiungibili. Verifica che Glances e Ollama siano in esecuzione."
+  },
+  "alerts_notification": {
+    "cpu": "⚠️ *Avviso CPU*: utilizzo al *{value}%* (soglia: {threshold}%)",
+    "ram": "⚠️ *Avviso RAM*: utilizzo al *{value}%* (soglia: {threshold}%)",
+    "disk": "⚠️ *Avviso disco*: utilizzo al *{value}%* (soglia: {threshold}%)"
+  }
+}

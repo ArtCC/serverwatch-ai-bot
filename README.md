@@ -11,6 +11,8 @@
 Single-user Telegram bot for server monitoring plus AI chat.
 Supports local Ollama models and optional cloud providers (OpenAI, Anthropic, DeepSeek).
 
+Supported locales: `en`, `es`, `it`.
+
 ## How it works
 
 1. You send a command or free-text message from Telegram.
@@ -104,7 +106,8 @@ Notes:
 │       └── i18n.py
 ├── locale/
 │   ├── en.json
-│   └── es.json
+│   ├── es.json
+│   └── it.json
 ├── docker-compose.yml
 ├── Dockerfile
 └── pyproject.toml

@@ -1,4 +1,11 @@
 {
+  "commands": {
+    "start": "Start and show menu",
+    "status": "Show current server metrics",
+    "alerts": "View or update alert thresholds",
+    "models": "List and switch AI model",
+    "help": "Show usage help"
+  },
   "keyboard": {
     "status": "📊 Status",
     "alerts": "🔔 Alerts",

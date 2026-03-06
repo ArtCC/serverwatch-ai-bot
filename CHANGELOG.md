@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.2] - 2026-03-06
+
+### Added
+
+- Added Italian locale file `locale/it.json` with full translations for commands, keyboard labels, handlers, errors, and alert notifications.
+
+### Changed
+
+- Localized Telegram `set_my_commands` descriptions via i18n keys instead of hardcoded English strings.
+- Registered bot command descriptions per `language_code` for all supported locales discovered in `locale/*.json`.
+- Added `commands.*` translation keys to locale files so command menu labels are language-aware.
+- Updated README locale documentation to include Italian support.
+
 ## [0.0.1] - 2026-03-06
 
 ### Added

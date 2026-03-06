@@ -21,9 +21,20 @@ from app.services import llm_router as llm_router_service
 from app.services import ollama as ollama_service
 from app.services import scheduler as scheduler_service
 from app.utils.i18n import load as load_locale
-from app.utils.i18n import locale_from_update, t
+from app.utils.i18n import locale_from_update, supported_locales, t
 
 logger = logging.getLogger("serverwatch")
+
+
+def _commands_for_locale(locale: str) -> list[BotCommand]:
+    """Build the bot command list with localised descriptions."""
+    return [
+        BotCommand("start", t("commands.start", locale=locale)),
+        BotCommand("status", t("commands.status", locale=locale)),
+        BotCommand("alerts", t("commands.alerts", locale=locale)),
+        BotCommand("models", t("commands.models", locale=locale)),
+        BotCommand("help", t("commands.help", locale=locale)),
+    ]
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -49,15 +60,12 @@ async def post_init(application: Application) -> None:
     await store.init_db()
     logger.info("Database initialised")
 
-    await application.bot.set_my_commands(
-        [
-            BotCommand("start", "Start the bot and show the keyboard"),
-            BotCommand("status", "Current server metrics"),
-            BotCommand("alerts", "View and configure alert thresholds"),
-            BotCommand("models", "List and select Ollama models"),
-            BotCommand("help", "Show help message"),
-        ]
-    )
+    default_locale = get_config().bot_locale
+    await application.bot.set_my_commands(_commands_for_locale(default_locale))
+
+    for locale in supported_locales():
+        await application.bot.set_my_commands(_commands_for_locale(locale), language_code=locale)
+
     logger.info("Bot commands registered")
 
 
