@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.0.1] - Unreleased
 
+### Added — Multi-provider model support
+- Optional cloud providers: OpenAI, Anthropic and DeepSeek with dedicated env vars for API key and fixed model.
+	- `OPENAI_API_KEY`, `OPENAI_MODEL`
+	- `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`
+	- `DEEPSEEK_API_KEY`, `DEEPSEEK_MODEL`
+- `app/services/llm_router.py` — unified chat routing to Ollama or cloud providers.
+- `/models` now lists combined model options:
+	- Local Ollama installed models.
+	- Optional cloud options (shown only when API key + model are configured).
+- Active selection is now persisted as `provider:model` in SQLite (e.g. `ollama:llama3.2:3b`, `openai:gpt-4o-mini`).
+- Added fallback compatibility for legacy stored values without provider prefix.
+
+### Added — Testing coverage
+- `tests/test_store.py` — normalization and parsing for `provider:model` selections.
+- Extended `tests/test_models.py` for tokenized callback options and configured cloud option discovery.
+- CI/local quality flow includes pytest execution.
+
+### Changed — UX and localisation
+- `/models` menu text and provider labels updated for the new multi-provider flow.
+- Added localized strings for provider labels and unavailable-provider notes in `locale/en.json` and `locale/es.json`.
+- Improved Spanish wording in model menu (`local`/`nube`) and cloud availability messages.
+
+### Changed — Runtime behavior and robustness
+- Chat handler now routes through the active provider/model instead of Ollama-only.
+- Provider-specific chat failures now return a friendly, localized message to the user.
+- Button handler routing was tightened with locale-aware regex matching to avoid swallowing free-text messages.
+
+### Changed — Documentation
+- `.env.example` and `docker-compose.yml` updated with optional cloud provider vars.
+- README updated for multi-provider model selection and architecture overview.
+
 ### Added
 - Project scaffolding: `app/handlers/`, `app/services/`, `app/core/`, `app/utils/` package structure.
 - `app/core/config.py` — typed `Config` dataclass loaded from environment variables with `get_config()` singleton.

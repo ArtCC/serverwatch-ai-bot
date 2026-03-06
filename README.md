@@ -41,6 +41,38 @@ Supports local Ollama models and optional cloud providers (OpenAI, Anthropic, De
 - `Model selection` (`/models`): lists all local Ollama models and optionally cloud provider options (`OpenAI`, `Anthropic`, `DeepSeek`) when API key and model are configured. Active option is marked with `✅`.
 - `Alert thresholds` (`/alerts`): edit CPU/RAM/Disk thresholds with confirmation.
 
+## Architecture tree
+
+```text
+.
+├── app/
+│   ├── main.py
+│   ├── core/
+│   │   ├── auth.py
+│   │   ├── config.py
+│   │   └── store.py
+│   ├── handlers/
+│   │   ├── alerts.py
+│   │   ├── chat.py
+│   │   ├── help.py
+│   │   ├── models.py
+│   │   ├── start.py
+│   │   └── status.py
+│   ├── services/
+│   │   ├── glances.py
+│   │   ├── llm_router.py
+│   │   └── ollama.py
+│   └── utils/
+│       ├── formatting.py
+│       └── i18n.py
+├── locale/
+│   ├── en.json
+│   └── es.json
+├── docker-compose.yml
+├── Dockerfile
+└── pyproject.toml
+```
+
 ## Environment variables
 
 | Variable | Required | Default | Description |
