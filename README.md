@@ -88,7 +88,7 @@ Supports local Ollama models and optional cloud providers (OpenAI, Anthropic, De
 | `ANTHROPIC_MODEL` | | — | Optional fixed Anthropic model |
 | `DEEPSEEK_API_KEY` | | — | Optional DeepSeek API key |
 | `DEEPSEEK_MODEL` | | — | Optional fixed DeepSeek model |
-| `CLOUD_WEB_SEARCH_ENABLED` | | `true` | Enable best-effort web search parameters for cloud providers |
+| `CLOUD_WEB_SEARCH_ENABLED` | | `true` | Enable best-effort web search for OpenAI/Anthropic (DeepSeek API does not expose a native web search flag) |
 | `BOT_LOG_LEVEL` | | `INFO` | Logging level |
 | `BOT_LOCALE` | | `en` | Fallback locale |
 | `TZ` | | `UTC` | Timezone |

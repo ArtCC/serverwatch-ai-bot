@@ -12,6 +12,7 @@ from app.core.store import split_model_selection
 from app.services import ollama
 
 _OPENAI_URL = "https://api.openai.com/v1/chat/completions"
+_OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
 _ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 _DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions"
 _TIMEOUT_CHAT = 120.0
@@ -139,30 +140,48 @@ async def _chat_openai(model: str, system: str, user_message: str) -> str:
         "Authorization": f"Bearer {cfg.openai_api_key}",
         "Content-Type": "application/json",
     }
-    payload: dict[str, object] = {
+    chat_payload: dict[str, object] = {
         "model": model,
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": user_message},
         ],
     }
-    fallback_payload: dict[str, object] | None = None
-
-    # Best effort: enable provider-side web search where supported.
     if cfg.cloud_web_search_enabled:
-        fallback_payload = dict(payload)
-        payload["web_search_options"] = {"search_context_size": "medium"}
+        responses_payload: dict[str, object] = {
+            "model": model,
+            "input": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user_message},
+            ],
+            "tools": [{"type": "web_search"}],
+            "tool_choice": "auto",
+        }
+        try:
+            async with httpx.AsyncClient(timeout=_TIMEOUT_CHAT) as client:
+                resp = await client.post(
+                    _OPENAI_RESPONSES_URL,
+                    headers=headers,
+                    json=responses_payload,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+            text = _extract_openai_responses_text(data)
+            if text:
+                return text
+            logger.warning(
+                "OpenAI Responses API returned no text. Falling back to chat completions."
+            )
+        except httpx.HTTPStatusError:
+            logger.warning(
+                "OpenAI web search request failed. "
+                "Retrying without web search via chat completions."
+            )
 
     async with httpx.AsyncClient(timeout=_TIMEOUT_CHAT) as client:
-        data = await _post_chat_completion_with_optional_retry(
-            client=client,
-            url=_OPENAI_URL,
-            headers=headers,
-            payload=payload,
-            fallback_payload=fallback_payload,
-            fallback_headers=None,
-            provider="OpenAI",
-        )
+        resp = await client.post(_OPENAI_URL, headers=headers, json=chat_payload)
+        resp.raise_for_status()
+        data = resp.json()
 
     choices = data.get("choices")
     if not isinstance(choices, list) or not choices:
@@ -195,23 +214,17 @@ async def _chat_deepseek(model: str, system: str, user_message: str) -> str:
             {"role": "user", "content": user_message},
         ],
     }
-    fallback_payload: dict[str, object] | None = None
 
-    # Best effort: DeepSeek can support web search for some models/configurations.
     if cfg.cloud_web_search_enabled:
-        fallback_payload = dict(payload)
-        payload["web_search"] = True
+        logger.info(
+            "DeepSeek web search is not enabled: Chat Completions API docs "
+            "do not expose a web search parameter."
+        )
 
     async with httpx.AsyncClient(timeout=_TIMEOUT_CHAT) as client:
-        data = await _post_chat_completion_with_optional_retry(
-            client=client,
-            url=_DEEPSEEK_URL,
-            headers=headers,
-            payload=payload,
-            fallback_payload=fallback_payload,
-            fallback_headers=None,
-            provider="DeepSeek",
-        )
+        resp = await client.post(_DEEPSEEK_URL, headers=headers, json=payload)
+        resp.raise_for_status()
+        data = resp.json()
 
     choices = data.get("choices")
     if not isinstance(choices, list) or not choices:
@@ -253,7 +266,7 @@ async def _chat_anthropic(model: str, system: str, user_message: str) -> str:
         headers = dict(headers)
         headers["anthropic-beta"] = "web-search-2025-03-05"
         fallback_payload = dict(payload)
-        payload["tools"] = [{"type": "web_search_20250305", "name": "web_search"}]
+        payload["tools"] = [{"type": "web_search_20250305"}]
 
     async with httpx.AsyncClient(timeout=_TIMEOUT_CHAT) as client:
         data = await _post_chat_completion_with_optional_retry(
@@ -270,11 +283,55 @@ async def _chat_anthropic(model: str, system: str, user_message: str) -> str:
     if not isinstance(content_list, list) or not content_list:
         raise ValueError("Anthropic response content is missing")
 
-    first = content_list[0]
-    if not isinstance(first, dict):
-        raise ValueError("Anthropic response content item is invalid")
+    text_parts: list[str] = []
+    for block in content_list:
+        if not isinstance(block, dict):
+            continue
+        if block.get("type") != "text":
+            continue
+        text = block.get("text")
+        if isinstance(text, str) and text.strip():
+            text_parts.append(text.strip())
 
-    text = first.get("text")
-    if not isinstance(text, str):
-        raise ValueError("Anthropic response text is missing")
-    return text
+    if text_parts:
+        return "\n".join(text_parts)
+
+    stop_reason = data.get("stop_reason")
+    if isinstance(stop_reason, str):
+        raise ValueError(f"Anthropic response text is missing (stop_reason={stop_reason})")
+    raise ValueError("Anthropic response text is missing")
+
+
+def _extract_openai_responses_text(data: object) -> str | None:
+    if not isinstance(data, dict):
+        return None
+
+    output_text = data.get("output_text")
+    if isinstance(output_text, str) and output_text.strip():
+        return output_text.strip()
+
+    output = data.get("output")
+    if not isinstance(output, list):
+        return None
+
+    text_parts: list[str] = []
+    for item in output:
+        if not isinstance(item, dict):
+            continue
+        if item.get("type") != "message":
+            continue
+        content = item.get("content")
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") != "output_text":
+                continue
+            text = block.get("text")
+            if isinstance(text, str) and text.strip():
+                text_parts.append(text.strip())
+
+    if text_parts:
+        return "\n".join(text_parts)
+    return None
