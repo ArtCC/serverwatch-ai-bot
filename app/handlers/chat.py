@@ -20,7 +20,7 @@ from telegram.ext import Application, ContextTypes, MessageHandler, filters
 from app.core import store
 from app.core.auth import restricted
 from app.core.config import get_config
-from app.services import glances, ollama
+from app.services import glances, llm_router
 from app.utils.i18n import locale_from_update, t, text_matches_key
 
 logger = logging.getLogger("serverwatch")
@@ -58,6 +58,15 @@ def _is_keyboard_button_text(text: str) -> bool:
     return any(text_matches_key(text, key) for key in _BUTTON_KEYS)
 
 
+def _provider_display_name(provider: str) -> str:
+    return {
+        "openai": "OpenAI",
+        "anthropic": "Anthropic",
+        "deepseek": "DeepSeek",
+        "ollama": "Ollama",
+    }.get(provider, provider)
+
+
 @restricted
 async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.effective_message
@@ -86,15 +95,19 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         logger.warning("Could not fetch Glances snapshot for chat context")
         system_prompt = _SYSTEM_NO_METRICS.format(locale=locale)
 
-    # Get active model
-    model = await store.get_active_model()
+    # Get active model selection (provider:model)
+    selection = await store.get_active_model()
+    provider, _, _ = selection.partition(":")
 
     # Query LLM
     try:
-        reply = await ollama.chat(model, system_prompt, message.text)
+        reply = await llm_router.chat(selection, system_prompt, message.text)
     except Exception:
-        logger.exception("Ollama chat request failed")
-        await placeholder.edit_text(t("chat.error", locale=locale), parse_mode=ParseMode.MARKDOWN)
+        logger.exception("LLM chat request failed for provider=%s", provider)
+        await placeholder.edit_text(
+            t("chat.provider_error", locale=locale, provider=_provider_display_name(provider)),
+            parse_mode=ParseMode.MARKDOWN,
+        )
         return
 
     # Telegram messages can be 4096 chars max

@@ -11,6 +11,12 @@ class Config:
     glances_base_url: str
     ollama_base_url: str
     ollama_model: str
+    openai_api_key: str | None
+    openai_model: str | None
+    anthropic_api_key: str | None
+    anthropic_model: str | None
+    deepseek_api_key: str | None
+    deepseek_model: str | None
     bot_log_level: str
     bot_locale: str
     sqlite_path: str
@@ -37,6 +43,12 @@ class Config:
             glances_base_url=os.getenv("GLANCES_BASE_URL", "http://glances:61208/api/4"),
             ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434"),
             ollama_model=os.getenv("OLLAMA_MODEL", "llama3.2:3b"),
+            openai_api_key=_optional_env("OPENAI_API_KEY"),
+            openai_model=_optional_env("OPENAI_MODEL"),
+            anthropic_api_key=_optional_env("ANTHROPIC_API_KEY"),
+            anthropic_model=_optional_env("ANTHROPIC_MODEL"),
+            deepseek_api_key=_optional_env("DEEPSEEK_API_KEY"),
+            deepseek_model=_optional_env("DEEPSEEK_MODEL"),
             bot_log_level=os.getenv("BOT_LOG_LEVEL", "INFO"),
             bot_locale=os.getenv("BOT_LOCALE", "en"),
             sqlite_path=os.getenv("SQLITE_PATH", "/app/data/serverwatch.db"),
@@ -50,6 +62,14 @@ class Config:
 
 
 _config: Config | None = None
+
+
+def _optional_env(name: str) -> str | None:
+    value = os.getenv(name)
+    if value is None:
+        return None
+    cleaned = value.strip()
+    return cleaned if cleaned else None
 
 
 def get_config() -> Config:

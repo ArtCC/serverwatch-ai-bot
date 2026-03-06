@@ -38,6 +38,20 @@
 - [x] Confirmation before changing the active model
 - [x] All Ollama prompts use the active model stored in the DB
 
+## Optional cloud model providers (OpenAI, Anthropic, DeepSeek)
+- [x] `app/core/config.py` — add optional env vars for API keys:
+	`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`
+- [x] `app/core/config.py` — add optional env vars for fixed models:
+	`OPENAI_MODEL`, `ANTHROPIC_MODEL`, `DEEPSEEK_MODEL`
+- [x] `.env.example` and `README.md` — document the 6 new optional vars
+- [x] `app/services/` — implement provider clients for OpenAI, Anthropic and DeepSeek chat APIs
+- [x] Unified chat routing: use the currently active model/provider (Ollama or cloud)
+- [x] `/models` flow — keep listing local Ollama installed models
+- [x] `/models` flow — also append `OpenAI`, `Anthropic`, `DeepSeek` model options only when both API key and model are configured
+- [x] Cloud provider options are fixed by env (single model per provider): no extra in-bot per-provider model selection
+- [x] Persist active selection in store with provider metadata (e.g. `ollama:<name>`, `openai:<model>`, `anthropic:<model>`, `deepseek:<model>`)
+- [x] Validate graceful fallback/errors when cloud provider is selected but unreachable (friendly user message)
+
 ## Alert engine
 - [ ] `app/services/scheduler.py` — async loop that checks metrics every `ALERT_CHECK_INTERVAL_SECONDS`
 - [ ] Cooldown logic (`ALERT_COOLDOWN_SECONDS`) to avoid spamming repeated alerts

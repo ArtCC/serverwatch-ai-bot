@@ -9,7 +9,7 @@
     "welcome": "👋 Hello, *{name}*! Welcome to *ServerWatch*.\n\nI monitor your server and answer questions about it using AI.\n\nUse the buttons below or just type anything."
   },
   "help": {
-    "text": "ℹ️ *ServerWatch — Help*\n\n*Commands*\n/status — Current server metrics\n/alerts — View and configure alert thresholds\n/models — Available Ollama models\n/help — Show this message\n\n*How it works*\nJust type a question in natural language and I will gather live metrics and answer using your local LLM.\n\n*Example questions*\n• What process is using the most CPU?\n• How much free disk space is left?\n• Is the server doing OK right now?"
+    "text": "ℹ️ *ServerWatch — Help*\n\n*Commands*\n/status — Current server metrics\n/alerts — View and configure alert thresholds\n/models — Available model options (Ollama + optional cloud providers)\n/help — Show this message\n\n*How it works*\nJust type a question in natural language and I will gather live metrics and answer using your active model.\n\n*Example questions*\n• What process is using the most CPU?\n• How much free disk space is left?\n• Is the server doing OK right now?"
   },
   "status": {
     "header": "📊 Server Status",
@@ -38,10 +38,16 @@
     "cancelled": "ℹ️ Change cancelled."
   },
   "models": {
-    "header": "🤖 Ollama Models",
+    "header": "🤖 Model Options",
     "no_models": "ℹ️ No models found on the Ollama instance.",
+    "no_models_available": "ℹ️ No model options are available. Configure Ollama and/or cloud provider credentials.",
     "model_line": "• `{name}`",
     "unavailable": "❌ Could not reach Ollama. Is the service running?",
+    "ollama_unavailable_note": "⚠️ Ollama is currently unavailable. Only configured cloud options are shown.",
+    "provider_ollama": "Ollama",
+    "provider_openai": "OpenAI",
+    "provider_anthropic": "Anthropic",
+    "provider_deepseek": "DeepSeek",
     "confirm_change": "Set active model to {model}?",
     "confirm_button": "✅ Confirm",
     "cancel_button": "❌ Cancel",
@@ -52,7 +58,8 @@
   },
   "chat": {
     "thinking": "⏳ Thinking…",
-    "error": "❌ Something went wrong while generating a response. Please try again."
+    "error": "❌ Something went wrong while generating a response. Please try again.",
+    "provider_error": "❌ Could not generate a response with {provider}. Check API/service availability and try again."
   },
   "errors": {
     "unauthorized": "👋 Hi! This is a private bot and is only available to its owner. If you think this is a mistake, please contact the administrator.",

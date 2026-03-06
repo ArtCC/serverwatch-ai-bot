@@ -1,4 +1,4 @@
-"""Handler for /models — list and select Ollama models.
+"""Handler for /models — list and select Ollama/cloud model options.
 
 Flow:
   1. /models or 🤖 Models button  → list models; active one marked ✅ in text;
@@ -27,6 +27,7 @@ from app.core import store
 from app.core.auth import restricted
 from app.core.config import get_config
 from app.services import ollama
+from app.services.llm_router import ModelOption, configured_cloud_options
 from app.utils.i18n import locale_from_update, regex_for_key, t, text_matches_key
 
 logger = logging.getLogger("serverwatch")
@@ -43,18 +44,42 @@ _UD_CHOICES = "mdl_choices"
 # ---------------------------------------------------------------------------
 
 
-def _models_keyboard(models: list[str], active: str) -> tuple[InlineKeyboardMarkup, dict[str, str]]:
+def _provider_label(provider: str, locale: str) -> str:
+    return {
+        "ollama": t("models.provider_ollama", locale=locale),
+        "openai": t("models.provider_openai", locale=locale),
+        "anthropic": t("models.provider_anthropic", locale=locale),
+        "deepseek": t("models.provider_deepseek", locale=locale),
+    }.get(provider, provider)
+
+
+def _display_name(option: ModelOption, locale: str) -> str:
+    return f"{_provider_label(option.provider, locale)} | {option.model}"
+
+
+def _models_keyboard(
+    options: list[ModelOption],
+    active: str,
+    locale: str,
+) -> tuple[InlineKeyboardMarkup, dict[str, str]]:
     """One button per non-active model to trigger the selection flow."""
     rows: list[list[InlineKeyboardButton]] = []
     mapping: dict[str, str] = {}
     idx = 0
 
-    for name in models:
-        if name == active:
+    for option in options:
+        if option.selection == active:
             continue
         token = str(idx)
-        mapping[token] = name
-        rows.append([InlineKeyboardButton(name, callback_data=f"{_CB_SELECT}{token}")])
+        mapping[token] = option.selection
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    _display_name(option, locale),
+                    callback_data=f"{_CB_SELECT}{token}",
+                )
+            ]
+        )
         idx += 1
 
     return InlineKeyboardMarkup(rows), mapping
@@ -86,6 +111,11 @@ def _resolve_model_token(context: ContextTypes.DEFAULT_TYPE, token: str) -> str 
     return model if isinstance(model, str) else None
 
 
+def _parse_selection(selection: str) -> tuple[str, str]:
+    provider, _, model = selection.partition(":")
+    return provider, model
+
+
 # ---------------------------------------------------------------------------
 # Shared rendering helper
 # ---------------------------------------------------------------------------
@@ -99,20 +129,29 @@ async def _show_models(
     """Fetch models and active model, then send or edit the message."""
     locale = locale_from_update(update, fallback=get_config().bot_locale)
 
+    ollama_models: list[str] = []
+    ollama_unavailable = False
     try:
-        models = await ollama.list_models()
-        active = await store.get_active_model()
+        ollama_models = await ollama.list_models()
     except Exception:
-        logger.exception("Failed to fetch models")
-        text = t("models.unavailable", locale=locale)
-        if edit and update.callback_query:
-            await update.callback_query.edit_message_text(text)
-        elif update.effective_message:
-            await update.effective_message.reply_text(text)
-        return
+        ollama_unavailable = True
+        logger.exception("Failed to fetch Ollama models")
 
-    if not models:
-        text = f"{t('models.header', locale=locale)}\n\n{t('models.no_models', locale=locale)}"
+    active = await store.get_active_model()
+
+    options: list[ModelOption] = [
+        ModelOption(selection=f"ollama:{name}", provider="ollama", model=name)
+        for name in ollama_models
+    ]
+    options.extend(configured_cloud_options())
+
+    if not options:
+        text = (
+            f"{t('models.header', locale=locale)}\n\n"
+            f"{t('models.no_models_available', locale=locale)}"
+        )
+        if ollama_unavailable:
+            text += f"\n\n{t('models.unavailable', locale=locale)}"
         if edit and update.callback_query:
             await update.callback_query.edit_message_text(text)
         elif update.effective_message:
@@ -120,12 +159,15 @@ async def _show_models(
         return
 
     lines = [t("models.header", locale=locale), ""]
-    for name in models:
-        marker = "✅" if name == active else "•"
-        lines.append(f"{marker} {name}")
+    for option in options:
+        marker = "✅" if option.selection == active else "•"
+        lines.append(f"{marker} {_display_name(option, locale)}")
+
+    if ollama_unavailable:
+        lines.extend(["", t("models.ollama_unavailable_note", locale=locale)])
 
     text = "\n".join(lines)
-    keyboard, mapping = _models_keyboard(models, active)
+    keyboard, mapping = _models_keyboard(options, active, locale)
     if context.user_data is not None:
         context.user_data[_UD_CHOICES] = mapping
 
@@ -186,11 +228,23 @@ async def cb_select(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     active = await store.get_active_model()
 
     if model == active:
-        await query.edit_message_text(t("models.already_active", locale=locale, model=model))
+        provider, model_name = _parse_selection(model)
+        await query.edit_message_text(
+            t(
+                "models.already_active",
+                locale=locale,
+                model=f"{_provider_label(provider, locale)} | {model_name}",
+            )
+        )
         return
 
+    provider, model_name = _parse_selection(model)
     await query.edit_message_text(
-        t("models.confirm_change", locale=locale, model=model),
+        t(
+            "models.confirm_change",
+            locale=locale,
+            model=f"{_provider_label(provider, locale)} | {model_name}",
+        ),
         reply_markup=_confirm_keyboard(locale, token),
     )
 
@@ -214,7 +268,14 @@ async def cb_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await store.set_active_model(model)
     logger.info("Active model changed to %s", model)
 
-    await query.edit_message_text(t("models.updated", locale=locale, model=model))
+    provider, model_name = _parse_selection(model)
+    await query.edit_message_text(
+        t(
+            "models.updated",
+            locale=locale,
+            model=f"{_provider_label(provider, locale)} | {model_name}",
+        )
+    )
 
 
 @restricted

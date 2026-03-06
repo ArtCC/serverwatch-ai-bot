@@ -19,6 +19,26 @@ _KEY_ACTIVE_MODEL = "active_model"
 _KEY_CPU_THRESHOLD = "threshold_cpu"
 _KEY_RAM_THRESHOLD = "threshold_ram"
 _KEY_DISK_THRESHOLD = "threshold_disk"
+_VALID_PROVIDERS = {"ollama", "openai", "anthropic", "deepseek"}
+
+
+def normalize_model_selection(value: str) -> str:
+    """Normalise model selections to provider:model format.
+
+    Backwards compatibility: legacy plain model names are interpreted as
+    Ollama models.
+    """
+    cleaned = value.strip()
+    provider, sep, model = cleaned.partition(":")
+    if sep and provider in _VALID_PROVIDERS and model.strip():
+        return f"{provider}:{model.strip()}"
+    return f"ollama:{cleaned}"
+
+
+def split_model_selection(selection: str) -> tuple[str, str]:
+    normalized = normalize_model_selection(selection)
+    provider, _, model = normalized.partition(":")
+    return provider, model
 
 
 def _db_path() -> str:
@@ -43,7 +63,7 @@ async def init_db() -> None:
         await db.commit()
 
         defaults = {
-            _KEY_ACTIVE_MODEL: cfg.ollama_model,
+            _KEY_ACTIVE_MODEL: normalize_model_selection(cfg.ollama_model),
             _KEY_CPU_THRESHOLD: str(cfg.alert_default_cpu_threshold),
             _KEY_RAM_THRESHOLD: str(cfg.alert_default_ram_threshold),
             _KEY_DISK_THRESHOLD: str(cfg.alert_default_disk_threshold),
@@ -82,12 +102,15 @@ async def _set(key: str, value: str) -> None:
 
 async def get_active_model() -> str:
     value = await _get(_KEY_ACTIVE_MODEL)
-    return value if value is not None else get_config().ollama_model
+    if value is None:
+        return normalize_model_selection(get_config().ollama_model)
+    return normalize_model_selection(value)
 
 
 async def set_active_model(model: str) -> None:
-    await _set(_KEY_ACTIVE_MODEL, model)
-    logger.info("Active model set to %s", model)
+    normalized = normalize_model_selection(model)
+    await _set(_KEY_ACTIVE_MODEL, normalized)
+    logger.info("Active model set to %s", normalized)
 
 
 # ------------------------------------------------------------------

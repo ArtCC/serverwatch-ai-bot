@@ -9,7 +9,7 @@
     "welcome": "👋 ¡Hola, *{name}*! Bienvenido a *ServerWatch*.\n\nMonitorizo tu servidor y respondo preguntas sobre él usando IA.\n\nUsa los botones de abajo o escribe lo que quieras."
   },
   "help": {
-    "text": "ℹ️ *ServerWatch — Ayuda*\n\n*Comandos*\n/status — Métricas actuales del servidor\n/alerts — Ver y configurar umbrales de alerta\n/models — Modelos de Ollama disponibles\n/help — Mostrar este mensaje\n\n*Cómo funciona*\nEscribe una pregunta en lenguaje natural y recopilaré métricas en tiempo real para responderte usando tu LLM local.\n\n*Ejemplos de preguntas*\n• ¿Qué proceso está consumiendo más CPU?\n• ¿Cuánto espacio libre queda en disco?\n• ¿El servidor está funcionando bien ahora mismo?"
+    "text": "ℹ️ *ServerWatch — Ayuda*\n\n*Comandos*\n/status — Métricas actuales del servidor\n/alerts — Ver y configurar umbrales de alerta\n/models — Opciones de modelo disponibles (Ollama + proveedores cloud opcionales)\n/help — Mostrar este mensaje\n\n*Cómo funciona*\nEscribe una pregunta en lenguaje natural y recopilaré métricas en tiempo real para responderte usando tu modelo activo.\n\n*Ejemplos de preguntas*\n• ¿Qué proceso está consumiendo más CPU?\n• ¿Cuánto espacio libre queda en disco?\n• ¿El servidor está funcionando bien ahora mismo?"
   },
   "status": {
     "header": "📊 Estado del servidor",
@@ -38,10 +38,16 @@
     "cancelled": "ℹ️ Cambio cancelado."
   },
   "models": {
-    "header": "🤖 Modelos de Ollama",
+    "header": "🤖 Opciones de modelo",
     "no_models": "ℹ️ No se han encontrado modelos en la instancia de Ollama.",
+    "no_models_available": "ℹ️ No hay opciones de modelo disponibles. Configura Ollama y/o credenciales cloud.",
     "model_line": "• `{name}`",
     "unavailable": "❌ No se puede conectar con Ollama. ¿Está el servicio en marcha?",
+    "ollama_unavailable_note": "⚠️ Ollama no está disponible ahora mismo. Solo se muestran opciones cloud configuradas.",
+    "provider_ollama": "Ollama",
+    "provider_openai": "OpenAI",
+    "provider_anthropic": "Anthropic",
+    "provider_deepseek": "DeepSeek",
     "confirm_change": "¿Establecer {model} como modelo activo?",
     "confirm_button": "✅ Confirmar",
     "cancel_button": "❌ Cancelar",
@@ -52,7 +58,8 @@
   },
   "chat": {
     "thinking": "⏳ Pensando…",
-    "error": "❌ Ha ocurrido un error al generar la respuesta. Por favor, inténtalo de nuevo."
+    "error": "❌ Ha ocurrido un error al generar la respuesta. Por favor, inténtalo de nuevo.",
+    "provider_error": "❌ No se pudo generar una respuesta con {provider}. Revisa la API/servicio e inténtalo de nuevo."
   },
   "errors": {
     "unauthorized": "👋 ¡Hola! Este es un bot privado y solo está disponible para su propietario. Si crees que es un error, contacta con el administrador.",
