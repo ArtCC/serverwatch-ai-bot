@@ -11,7 +11,7 @@
 Single-user Telegram bot for server monitoring plus AI chat.
 Supports local Ollama models and optional cloud providers (OpenAI, Anthropic, DeepSeek).
 
-Supported locales: `en`, `es`, `it`.
+Supported locales: `en`, `es`, `it`, `de`, `fr`.
 
 ## How it works
 
@@ -65,6 +65,7 @@ Notes:
 | `/start` | Start the bot and show the persistent keyboard |
 | `/status` | Current server metrics snapshot |
 | `/alerts` | View and configure alert thresholds |
+| `/glances` | Open live Glances per-endpoint detail menu |
 | `/models` | List model options and select the active one |
 | `/help` | Show help message |
 
@@ -79,6 +80,7 @@ Notes:
 
 - `Model selection` (`/models`): lists all local Ollama models and optionally cloud provider options (`OpenAI`, `Anthropic`, `DeepSeek`) when API key and model are configured. Active option is marked with `✅`.
 - `Alert thresholds` (`/alerts`): edit CPU/RAM/Disk thresholds with confirmation.
+- `Glances details` (`/glances` or inline button from `/status`): open a live menu and fetch one Glances endpoint on demand (CPU, RAM, disk, network, containers, top processes, etc.).
 
 ## Architecture tree
 
@@ -93,6 +95,7 @@ Notes:
 │   ├── handlers/
 │   │   ├── alerts.py
 │   │   ├── chat.py
+│   │   ├── glances_menu.py
 │   │   ├── help.py
 │   │   ├── models.py
 │   │   ├── start.py
@@ -107,7 +110,9 @@ Notes:
 ├── locale/
 │   ├── en.json
 │   ├── es.json
-│   └── it.json
+│   ├── it.json
+│   ├── de.json
+│   └── fr.json
 ├── docker-compose.yml
 ├── Dockerfile
 └── pyproject.toml

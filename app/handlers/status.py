@@ -24,6 +24,7 @@ from telegram.ext import (
 
 from app.core.auth import restricted
 from app.core.config import get_config
+from app.handlers.glances_menu import open_menu_callback_data
 from app.services import glances
 from app.utils.i18n import locale_from_update, regex_for_key, t, text_matches_key
 
@@ -40,7 +41,13 @@ def _refresh_keyboard(locale: str) -> InlineKeyboardMarkup:
                     t("status.refresh_button", locale=locale),
                     callback_data=_CB_REFRESH,
                 )
-            ]
+            ],
+            [
+                InlineKeyboardButton(
+                    t("status.glances_button", locale=locale),
+                    callback_data=open_menu_callback_data(),
+                )
+            ],
         ]
     )
 

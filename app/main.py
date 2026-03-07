@@ -12,6 +12,7 @@ from app.core import store
 from app.core.config import get_config
 from app.handlers import alerts as alerts_handler
 from app.handlers import chat as chat_handler
+from app.handlers import glances_menu as glances_menu_handler
 from app.handlers import help as help_handler
 from app.handlers import models as models_handler
 from app.handlers import status as status_handler
@@ -32,6 +33,7 @@ def _commands_for_locale(locale: str) -> list[BotCommand]:
         BotCommand("start", t("commands.start", locale=locale)),
         BotCommand("status", t("commands.status", locale=locale)),
         BotCommand("alerts", t("commands.alerts", locale=locale)),
+        BotCommand("glances", t("commands.glances", locale=locale)),
         BotCommand("models", t("commands.models", locale=locale)),
         BotCommand("help", t("commands.help", locale=locale)),
     ]
@@ -100,6 +102,7 @@ def main() -> None:
     app.add_handler(CommandHandler("start", start_handler))
     status_handler.register(app)
     alerts_handler.register(app)
+    glances_menu_handler.register(app)
     models_handler.register(app)
     help_handler.register(app)
     # chat handler must be last — it catches all remaining text messages

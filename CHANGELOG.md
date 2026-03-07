@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.3] - 2026-03-07
+
+### Added
+
+- Added `/glances` command to open a live per-endpoint Glances detail menu.
+- Added new inline flow in `/status` to open Glances details directly from the status card.
+- Added `app/handlers/glances_menu.py` to handle endpoint selection, live fetch, refresh, back, and close actions.
+- Added localized `glances.*` UI strings and `commands.glances` descriptions for `en`, `es`, `it`, `de`, and `fr` locales.
+- Added on-demand Glances service API `get_live_endpoint_detail(key)` with allowlisted endpoint keys.
+- Added German and French locale files (`locale/de.json`, `locale/fr.json`) with full translations for commands, keyboard labels, handlers, errors, and alert notifications.
+
+### Changed
+
+- Added a soft status response template in chat prompts so status answers keep a consistent structure without becoming restrictive.
+- Updated help text and README to document the new `/glances` command and inline details flow.
+- Updated i18n tests to reflect the expanded supported locale set and current locale fallback behavior.
+
 ## [0.0.2] - 2026-03-06
 
 ### Added

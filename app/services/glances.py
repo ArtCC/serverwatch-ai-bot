@@ -53,6 +53,19 @@ _ENDPOINTS: tuple[tuple[str, str], ...] = (
     ("pluginslist", "/pluginslist"),
 )
 
+_DETAIL_ENDPOINTS: dict[str, str] = {
+    "cpu": "/cpu",
+    "mem": "/mem",
+    "fs": "/fs",
+    "load": "/load",
+    "network": "/network",
+    "containers": "/containers",
+    "processlist": "/processlist/top/10",
+    "uptime": "/uptime",
+    "system": "/system",
+    "sensors": "/sensors",
+}
+
 
 @dataclass
 class ServerSnapshot:
@@ -162,6 +175,25 @@ async def close_client() -> None:
         await _client.aclose()
         _client = None
         _client_timeout = None
+
+
+def detail_endpoint_keys() -> tuple[str, ...]:
+    """Return supported endpoint keys for live detail requests."""
+    return tuple(_DETAIL_ENDPOINTS.keys())
+
+
+async def get_live_endpoint_detail(key: str) -> object:
+    """Fetch one Glances endpoint on demand without using snapshot cache."""
+    path = _DETAIL_ENDPOINTS.get(key)
+    if path is None:
+        raise ValueError(f"Unsupported Glances detail endpoint: {key}")
+
+    cfg = get_config()
+    base_url = cfg.glances_base_url.rstrip("/")
+    client = await _get_client()
+    response = await client.get(f"{base_url}{path}")
+    response.raise_for_status()
+    return response.json()
 
 
 async def _fetch_snapshot() -> ServerSnapshot:

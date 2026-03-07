@@ -3,6 +3,7 @@
     "start": "Iniciar y mostrar menu",
     "status": "Mostrar metricas actuales",
     "alerts": "Ver o actualizar umbrales",
+    "glances": "Abrir menu de detalles de Glances",
     "models": "Listar y cambiar modelo IA",
     "help": "Mostrar ayuda de uso"
   },
@@ -16,7 +17,7 @@
     "welcome": "👋 ¡Hola, *{name}*! Bienvenido a *ServerWatch*.\n\nMonitorizo tu servidor y respondo preguntas sobre él usando IA.\n\nUsa los botones de abajo o escribe lo que quieras."
   },
   "help": {
-    "text": "ℹ️ *ServerWatch — Ayuda*\n\n*Comandos*\n/status — Métricas actuales del servidor\n/alerts — Ver y configurar umbrales de alerta\n/models — Opciones de modelo disponibles (Ollama + proveedores en la nube opcionales)\n/help — Mostrar este mensaje\n\n*Cómo funciona*\nEscribe una pregunta en lenguaje natural y recopilaré métricas en tiempo real para responderte usando tu modelo activo.\n\n*Ejemplos de preguntas*\n• ¿Qué proceso está consumiendo más CPU?\n• ¿Cuánto espacio libre queda en disco?\n• ¿El servidor está funcionando bien ahora mismo?"
+    "text": "ℹ️ *ServerWatch — Ayuda*\n\n*Comandos*\n/status — Métricas actuales del servidor\n/alerts — Ver y configurar umbrales de alerta\n/glances — Abrir menu de detalles en vivo por endpoint\n/models — Opciones de modelo disponibles (Ollama + proveedores en la nube opcionales)\n/help — Mostrar este mensaje\n\n*Cómo funciona*\nEscribe una pregunta en lenguaje natural y recopilaré métricas en tiempo real para responderte usando tu modelo activo.\n\n*Ejemplos de preguntas*\n• ¿Qué proceso está consumiendo más CPU?\n• ¿Cuánto espacio libre queda en disco?\n• ¿El servidor está funcionando bien ahora mismo?"
   },
   "status": {
     "header": "📊 Estado del servidor",
@@ -27,7 +28,29 @@
     "uptime": "Tiempo activo",
     "docker": "Docker",
     "refresh_button": "🔄 Actualizar",
+    "glances_button": "🔎 Detalles Glances",
     "unavailable": "❌ No se han podido obtener las métricas. ¿Está Glances en marcha?"
+  },
+  "glances": {
+    "header": "🔎 Menu de detalles de Glances",
+    "menu_hint": "Elige un endpoint para obtener en este momento ese detalle en vivo.",
+    "detail_header": "ℹ️ Detalle en vivo: {label}",
+    "refresh_button": "🔄 Actualizar",
+    "back_button": "↩️ Volver",
+    "close_button": "❌ Cerrar",
+    "unavailable": "❌ No se pudo recuperar el detalle en vivo de {label}. ¿Está Glances en marcha?",
+    "options": {
+      "cpu": "CPU",
+      "mem": "RAM",
+      "fs": "Disco",
+      "load": "Carga",
+      "network": "Red",
+      "containers": "Contenedores",
+      "processlist": "Procesos Top",
+      "uptime": "Tiempo activo",
+      "system": "Sistema",
+      "sensors": "Sensores"
+    }
   },
   "alerts": {
     "header": "🔔 *Umbrales de alerta*",

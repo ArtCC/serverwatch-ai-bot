@@ -58,7 +58,21 @@
 - [x] Cooldown logic (`ALERT_COOLDOWN_SECONDS`) to avoid spamming repeated alerts
 - [x] Proactive alert message to the chat when a threshold is exceeded
 
-## Documentation (keep updated as we go)
-- [x] `CHANGELOG.md`
-- [x] `CONTRIBUTING.md`
-- [x] `README.md`
+## Status and Glances UX
+- [x] `app/services/glances.py` — add on-demand per-endpoint fetch API: `get_live_endpoint_detail(key)`.
+- [x] `app/handlers/glances_menu.py` — add `/glances` command with inline endpoint menu, refresh/back/close actions, and live detail fetch.
+- [x] `app/main.py` — register `/glances` in `setMyCommands` and register new Glances menu handler.
+- [x] `app/handlers/status.py` — add inline button to open Glances detail menu from `/status`.
+
+## LLM Response Quality
+- [x] `app/handlers/chat.py` — add a soft status response template (non-restrictive structure guidance) for status-like requests.
+- [x] Keep chat answers in the user language via `locale_from_update(...)` + prompt instruction.
+
+## Localization
+- [x] Add i18n keys for Glances details UI and command labels across locales.
+- [x] Add and translate new locales: `locale/de.json` and `locale/fr.json`.
+- [x] Update i18n tests to reflect the expanded supported locale set.
+
+## Release and Documentation
+- [x] Bump version to `0.0.3` in `pyproject.toml` and update `CHANGELOG.md`.
+- [x] Update `README.md` with `/glances`, inline detail flow, and supported locales (`en`, `es`, `it`, `de`, `fr`).

@@ -8,7 +8,6 @@ services:
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
       GLANCES_BASE_URL: ${GLANCES_BASE_URL:-http://glances:61208/api/4}
       GLANCES_REQUEST_TIMEOUT_SECONDS: ${GLANCES_REQUEST_TIMEOUT_SECONDS:-10.0}
-      GLANCES_LOG_FULL_PAYLOAD: ${GLANCES_LOG_FULL_PAYLOAD:-false}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:3b}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
@@ -47,3 +46,11 @@ services:
       # - /etc/os-release:/etc/os-release:ro
     ports:
       - "127.0.0.1:61208:61208"
+    # For nvidia GPUs
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

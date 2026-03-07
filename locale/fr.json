@@ -1,0 +1,113 @@
+{
+  "commands": {
+    "start": "Démarrer et afficher le menu",
+    "status": "Afficher les métriques actuelles du serveur",
+    "alerts": "Voir ou modifier les seuils d'alerte",
+    "glances": "Ouvrir le menu de détails Glances en direct",
+    "models": "Lister et changer le modèle IA",
+    "help": "Afficher l'aide"
+  },
+  "keyboard": {
+    "status": "📊 État",
+    "alerts": "🔔 Alertes",
+    "models": "🤖 Modèles",
+    "help": "❓ Aide"
+  },
+  "start": {
+    "welcome": "👋 Bonjour, *{name}* ! Bienvenue sur *ServerWatch*.\n\nJe surveille votre serveur et réponds à vos questions avec l'IA.\n\nUtilisez les boutons ci-dessous ou écrivez simplement un message."
+  },
+  "help": {
+    "text": "ℹ️ *ServerWatch — Aide*\n\n*Commandes*\n/status — Métriques actuelles du serveur\n/alerts — Voir et configurer les seuils d'alerte\n/glances — Ouvrir le menu de détails en direct par endpoint\n/models — Options de modèle disponibles (Ollama + fournisseurs cloud optionnels)\n/help — Afficher ce message\n\n*Comment ça marche*\nPosez une question en langage naturel et je récupérerai des métriques en direct pour répondre avec votre modèle actif.\n\n*Exemples de questions*\n• Quel processus utilise le plus de CPU ?\n• Combien d'espace disque libre reste-t-il ?\n• Le serveur fonctionne-t-il correctement en ce moment ?"
+  },
+  "status": {
+    "header": "📊 État du serveur",
+    "cpu": "CPU",
+    "ram": "RAM",
+    "disk": "Disque",
+    "load": "Charge moyenne",
+    "uptime": "Temps de fonctionnement",
+    "docker": "Docker",
+    "refresh_button": "🔄 Actualiser",
+    "glances_button": "🔎 Détails Glances",
+    "unavailable": "❌ Impossible de récupérer les métriques. Glances est-il en cours d'exécution ?"
+  },
+  "glances": {
+    "header": "🔎 Menu de détails Glances",
+    "menu_hint": "Choisissez un endpoint pour récupérer immédiatement un détail en direct.",
+    "detail_header": "ℹ️ Détail en direct : {label}",
+    "refresh_button": "🔄 Actualiser",
+    "back_button": "↩️ Retour",
+    "close_button": "❌ Fermer",
+    "unavailable": "❌ Impossible de récupérer le détail en direct pour {label}. Glances est-il en cours d'exécution ?",
+    "options": {
+      "cpu": "CPU",
+      "mem": "RAM",
+      "fs": "Disque",
+      "load": "Charge",
+      "network": "Réseau",
+      "containers": "Conteneurs",
+      "processlist": "Processus principaux",
+      "uptime": "Temps de fonctionnement",
+      "system": "Système",
+      "sensors": "Capteurs"
+    }
+  },
+  "alerts": {
+    "header": "🔔 *Seuils d'alerte*",
+    "cpu_label": "CPU",
+    "ram_label": "RAM",
+    "disk_label": "Disque",
+    "threshold_line": "{metric} : *{value}%*",
+    "edit_button": "✏️ Modifier {metric}",
+    "prompt_new_value": "Entrez le nouveau seuil pour *{metric}* (0-100) :",
+    "invalid_value": "❌ Valeur invalide. Veuillez entrer un nombre entre 0 et 100.",
+    "confirm_change": "Définir le seuil de *{metric}* à *{value}%* ?",
+    "confirm_button": "✅ Confirmer",
+    "cancel_button": "❌ Annuler",
+    "updated": "✅ Seuil de *{metric}* mis à jour à *{value}%*.",
+    "cancelled": "ℹ️ Modification annulée."
+  },
+  "models": {
+    "header": "🤖 Options de modèle",
+    "active_line": "📍 Actif : {model}",
+    "local_section": "🏠 Local (Ollama)",
+    "cloud_section": "☁️ Cloud",
+    "local_empty": "ℹ️ Aucun modèle local n'est disponible.",
+    "cloud_empty": "ℹ️ Aucun modèle cloud n'est configuré.",
+    "local_unavailable": "⚠️ Ollama est actuellement indisponible.",
+    "no_models": "ℹ️ Aucun modèle trouvé sur l'instance Ollama.",
+    "no_models_available": "ℹ️ Aucune option de modèle disponible. Configurez Ollama et/ou les identifiants des fournisseurs cloud.",
+    "model_line": "• `{name}`",
+    "unavailable": "❌ Impossible d'atteindre Ollama. Le service est-il en cours d'exécution ?",
+    "ollama_unavailable_note": "⚠️ Ollama est actuellement indisponible. Seules les options cloud configurées sont affichées.",
+    "select_button": "Sélectionner {model}",
+    "provider_ollama": "Ollama",
+    "provider_openai": "OpenAI",
+    "provider_anthropic": "Anthropic",
+    "provider_deepseek": "DeepSeek",
+    "confirm_change": "Définir {model} comme modèle actif ?",
+    "change_button": "🔄 Changer de modèle",
+    "confirm_button": "✅ Confirmer",
+    "cancel_button": "❌ Annuler",
+    "updated": "✅ Modèle actif défini sur {model}.",
+    "cancelled": "ℹ️ Modification annulée.",
+    "already_active": "ℹ️ {model} est déjà le modèle actif.",
+    "selection_expired": "⚠️ La sélection du modèle a expiré. Exécutez /models à nouveau."
+  },
+  "chat": {
+    "thinking": "⏳ Réflexion…",
+    "error": "❌ Une erreur s'est produite lors de la génération de la réponse. Veuillez réessayer.",
+    "provider_error": "❌ Impossible de générer une réponse avec {provider}. Vérifiez la disponibilité de l'API/du service et réessayez."
+  },
+  "errors": {
+    "unauthorized": "👋 Bonjour ! Ce bot est privé et accessible uniquement à son propriétaire. Si vous pensez qu'il s'agit d'une erreur, veuillez contacter l'administrateur.",
+    "general": "❌ Une erreur inattendue s'est produite. Veuillez réessayer plus tard.",
+    "telegram_bad_request": "⚠️ Telegram a rejeté ce format de message. Veuillez réessayer.",
+    "service_unavailable": "⚠️ Un ou plusieurs services sont inaccessibles. Vérifiez que Glances et Ollama sont en cours d'exécution."
+  },
+  "alerts_notification": {
+    "cpu": "⚠️ *Alerte CPU* : utilisation à *{value}%* (seuil : {threshold}%)",
+    "ram": "⚠️ *Alerte RAM* : utilisation à *{value}%* (seuil : {threshold}%)",
+    "disk": "⚠️ *Alerte disque* : utilisation à *{value}%* (seuil : {threshold}%)"
+  }
+}

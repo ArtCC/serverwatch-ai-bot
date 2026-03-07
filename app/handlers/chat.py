@@ -61,6 +61,21 @@ If needed, briefly mention that live metrics are unavailable right now,
 then continue with best-effort guidance.
 """
 
+_STATUS_SOFT_TEMPLATE = """\
+Preferred response structure for server status answers (soft template):
+- Overall status: one short line with ✅/⚠️/❌ and the main reason.
+- Key findings: 2-4 concise points using only relevant metrics.
+- Recommended action: one practical next step, or "No immediate action needed".
+- What to watch next: one short follow-up check.
+
+Guidelines:
+- This structure is preferred, not mandatory. Adapt naturally to the question.
+- Omit sections that add no value.
+- Keep wording varied; avoid repetitive phrasing across messages.
+- Be specific with current metrics and avoid generic filler.
+- Keep typical answers around 6-10 lines unless the situation is critical.
+"""
+
 _TOOL_DECIDER_SYSTEM = """\
 You are a routing assistant for a server monitoring bot.
 Decide if you need live Glances metrics to answer the user's message well.
@@ -153,6 +168,18 @@ def _quick_glances_decision(user_message: str) -> bool | None:
     return None
 
 
+def _is_status_like_request(user_message: str) -> bool:
+    """Best-effort detector for status/health intents in free-text chat."""
+    text = user_message.casefold()
+    return any(token in text for token in _GLANCES_HINTS)
+
+
+def _append_status_template(system_prompt: str, *, enabled: bool) -> str:
+    if not enabled:
+        return system_prompt
+    return f"{system_prompt.rstrip()}\n\n{_STATUS_SOFT_TEMPLATE}"
+
+
 def _truncate_for_telegram(text: str) -> str:
     if len(text) <= _TELEGRAM_MAX_TEXT_LENGTH:
         return text
@@ -223,6 +250,7 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     selection = await store.get_active_model()
     provider, _, _ = selection.partition(":")
 
+    status_like_request = _is_status_like_request(message.text)
     quick_decision = _quick_glances_decision(message.text)
     if quick_decision is None:
         if provider in {"openai", "anthropic", "deepseek"}:
@@ -235,16 +263,22 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     try:
         if use_glances:
             snapshot = await glances.get_snapshot()
-            system_prompt = _SYSTEM_WITH_METRICS.format(
-                locale=locale,
-                metrics_json=snapshot.as_raw_json(),
+            system_prompt = _append_status_template(
+                _SYSTEM_WITH_METRICS.format(
+                    locale=locale,
+                    metrics_json=snapshot.as_raw_json(),
+                ),
+                enabled=status_like_request,
             )
         else:
             system_prompt = _SYSTEM_NO_METRICS.format(locale=locale)
     except Exception:
         logger.warning("Could not fetch Glances snapshot for chat context")
         if use_glances:
-            system_prompt = _SYSTEM_METRICS_UNAVAILABLE.format(locale=locale)
+            system_prompt = _append_status_template(
+                _SYSTEM_METRICS_UNAVAILABLE.format(locale=locale),
+                enabled=status_like_request,
+            )
         else:
             system_prompt = _SYSTEM_NO_METRICS.format(locale=locale)
 
