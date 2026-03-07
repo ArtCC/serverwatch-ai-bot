@@ -5,6 +5,7 @@
     "alerts": "Alarmgrenzwerte anzeigen oder ändern",
     "glances": "Live-Glances-Detailmenü öffnen",
     "models": "KI-Modell auflisten und wechseln",
+    "author": "Autorenprofil anzeigen",
     "help": "Hilfe anzeigen"
   },
   "keyboard": {
@@ -15,6 +16,9 @@
   },
   "start": {
     "welcome": "👋 Hallo, *{name}*! Willkommen bei *ServerWatch*.\n\nIch überwache deinen Server und beantworte Fragen dazu mit KI.\n\nNutze die Buttons unten oder schreibe einfach eine Nachricht."
+  },
+  "author": {
+    "text": "👤 *Autor*: ArtCC\n🔗 GitHub: https://github.com/ArtCC"
   },
   "help": {
     "text": "ℹ️ *ServerWatch — Hilfe*\n\n*Befehle*\n/status — Aktuelle Servermetriken\n/alerts — Alarmgrenzwerte anzeigen und konfigurieren\n/glances — Live-Detailmenü pro Endpoint öffnen\n/models — Verfügbare Modelloptionen (Ollama + optionale Cloud-Anbieter)\n/help — Diese Nachricht anzeigen\n\n*So funktioniert es*\nStelle einfach eine Frage in natürlicher Sprache. Ich sammle Live-Metriken und antworte mit deinem aktiven Modell.\n\n*Beispielfragen*\n• Welcher Prozess nutzt die meiste CPU?\n• Wie viel freier Speicherplatz ist noch vorhanden?\n• Läuft der Server gerade stabil?"
@@ -34,7 +38,7 @@
   "glances": {
     "header": "🔎 Glances-Detailmenü",
     "menu_hint": "Wähle einen Endpoint, um jetzt einen Live-Detail-Snapshot abzurufen.",
-    "detail_header": "ℹ️ Live-Detail: {label}",
+    "detail_header": "ℹ️ Detail: {label}",
     "loading": "⏳ Loading...",
     "refresh_button": "🔄 Aktualisieren",
     "back_button": "↩️ Zurück",

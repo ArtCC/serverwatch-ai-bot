@@ -5,6 +5,7 @@
     "alerts": "View or update alert thresholds",
     "glances": "Open live Glances detail menu",
     "models": "List and switch AI model",
+    "author": "Show author profile",
     "help": "Show usage help"
   },
   "keyboard": {
@@ -15,6 +16,9 @@
   },
   "start": {
     "welcome": "👋 Hello, *{name}*! Welcome to *ServerWatch*.\n\nI monitor your server and answer questions about it using AI.\n\nUse the buttons below or just type anything."
+  },
+  "author": {
+    "text": "👤 *Author*: ArtCC\n🔗 GitHub: https://github.com/ArtCC"
   },
   "help": {
     "text": "ℹ️ *ServerWatch — Help*\n\n*Commands*\n/status — Current server metrics\n/alerts — View and configure alert thresholds\n/glances — Open live endpoint details menu\n/models — Available model options (Ollama + optional cloud providers)\n/help — Show this message\n\n*How it works*\nJust type a question in natural language and I will gather live metrics and answer using your active model.\n\n*Example questions*\n• What process is using the most CPU?\n• How much free disk space is left?\n• Is the server doing OK right now?"
@@ -34,7 +38,7 @@
   "glances": {
     "header": "🔎 Glances Detail Menu",
     "menu_hint": "Pick one endpoint to fetch a live detail snapshot now.",
-    "detail_header": "ℹ️ Live detail: {label}",
+    "detail_header": "ℹ️ Detail: {label}",
     "loading": "⏳ Loading...",
     "refresh_button": "🔄 Refresh",
     "back_button": "↩️ Back",

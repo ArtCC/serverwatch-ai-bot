@@ -11,6 +11,7 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 from app.core import store
 from app.core.config import get_config
 from app.handlers import alerts as alerts_handler
+from app.handlers import author as author_handler
 from app.handlers import chat as chat_handler
 from app.handlers import glances_menu as glances_menu_handler
 from app.handlers import help as help_handler
@@ -35,6 +36,7 @@ def _commands_for_locale(locale: str) -> list[BotCommand]:
         BotCommand("alerts", t("commands.alerts", locale=locale)),
         BotCommand("glances", t("commands.glances", locale=locale)),
         BotCommand("models", t("commands.models", locale=locale)),
+        BotCommand("author", t("commands.author", locale=locale)),
         BotCommand("help", t("commands.help", locale=locale)),
     ]
 
@@ -104,6 +106,7 @@ def main() -> None:
     alerts_handler.register(app)
     glances_menu_handler.register(app)
     models_handler.register(app)
+    author_handler.register(app)
     help_handler.register(app)
     # chat handler must be last — it catches all remaining text messages
     chat_handler.register(app)

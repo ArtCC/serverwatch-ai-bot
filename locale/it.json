@@ -5,6 +5,7 @@
     "alerts": "Vedi o aggiorna soglie alert",
     "glances": "Apri menu dettagli Glances",
     "models": "Elenca e cambia modello IA",
+    "author": "Mostra profilo autore",
     "help": "Mostra guida all'uso"
   },
   "keyboard": {
@@ -15,6 +16,9 @@
   },
   "start": {
     "welcome": "👋 Ciao, *{name}*! Benvenuto in *ServerWatch*.\n\nMonitoro il tuo server e rispondo alle domande usando l'IA.\n\nUsa i pulsanti qui sotto oppure scrivi pure quello che vuoi."
+  },
+  "author": {
+    "text": "👤 *Autore*: ArtCC\n🔗 GitHub: https://github.com/ArtCC"
   },
   "help": {
     "text": "ℹ️ *ServerWatch — Aiuto*\n\n*Comandi*\n/status — Metriche attuali del server\n/alerts — Visualizza e configura le soglie di avviso\n/glances — Apri menu dettagli live per endpoint\n/models — Opzioni modello disponibili (Ollama + provider cloud opzionali)\n/help — Mostra questo messaggio\n\n*Come funziona*\nScrivi una domanda in linguaggio naturale e raccoglierò metriche in tempo reale per rispondere usando il modello attivo.\n\n*Esempi di domande*\n• Quale processo sta usando più CPU?\n• Quanto spazio libero rimane su disco?\n• Il server sta andando bene in questo momento?"
@@ -34,7 +38,7 @@
   "glances": {
     "header": "🔎 Menu dettagli Glances",
     "menu_hint": "Scegli un endpoint per ottenere ora quel dettaglio live.",
-    "detail_header": "ℹ️ Dettaglio live: {label}",
+    "detail_header": "ℹ️ Dettaglio: {label}",
     "loading": "⏳ Loading...",
     "refresh_button": "🔄 Aggiorna",
     "back_button": "↩️ Indietro",

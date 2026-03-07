@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import cast
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Message, Update
@@ -47,6 +48,7 @@ _MENU_KEYS: tuple[str, ...] = (
 _TELEGRAM_MAX_TEXT_LENGTH = 4096
 _TELEGRAM_HARD_FALLBACK_LENGTH = 1000
 _MAX_DETAIL_JSON_FOR_LLM = 5000
+_STREAM_EDIT_INTERVAL_SECONDS = 0.8
 
 _DETAIL_SUMMARY_SYSTEM = """\
 You are ServerWatch, a concise server monitoring assistant.
@@ -95,7 +97,7 @@ def _fit_for_telegram(text: str) -> str:
 
 
 def _serialize_for_llm(payload: object) -> str:
-    serialized = json.dumps(_compact_payload(payload), ensure_ascii=True)
+    serialized = json.dumps(payload, ensure_ascii=True)
     if len(serialized) <= _MAX_DETAIL_JSON_FOR_LLM:
         return serialized
     suffix = "...[truncated]"
@@ -156,6 +158,131 @@ def _compact_payload(
     return payload
 
 
+def _round_num(value: object) -> object:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return round(value, 2)
+    return value
+
+
+def _pick_fields(source: dict[str, object], keys: tuple[str, ...]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key in keys:
+        if key in source:
+            result[key] = _round_num(source[key])
+    return result
+
+
+def _prepare_llm_payload(key: str, payload: object) -> object:
+    """Build a tiny endpoint-aware payload for faster summarization."""
+    if isinstance(payload, dict):
+        if key == "cpu":
+            return _pick_fields(
+                payload,
+                (
+                    "total",
+                    "user",
+                    "system",
+                    "idle",
+                    "iowait",
+                    "irq",
+                    "softirq",
+                    "steal",
+                ),
+            )
+        if key == "mem":
+            return _pick_fields(
+                payload,
+                (
+                    "total",
+                    "used",
+                    "free",
+                    "percent",
+                    "available",
+                    "active",
+                    "inactive",
+                    "cached",
+                    "buffers",
+                ),
+            )
+        if key == "load":
+            return _pick_fields(payload, ("min1", "min5", "min15", "cpucore"))
+        if key == "system":
+            return _pick_fields(
+                payload,
+                (
+                    "hostname",
+                    "os_name",
+                    "os_version",
+                    "platform",
+                    "linux_distro",
+                    "hr_name",
+                ),
+            )
+        if key == "uptime":
+            return payload
+        return _compact_payload(payload, max_depth=2, max_dict_keys=15, max_list_items=6)
+
+    if isinstance(payload, list):
+        items: list[object] = []
+        max_items = 5
+        for item in payload[:max_items]:
+            if not isinstance(item, dict):
+                items.append(_round_num(item))
+                continue
+
+            if key == "fs":
+                items.append(
+                    _pick_fields(item, ("mnt_point", "device_name", "size", "used", "percent"))
+                )
+                continue
+            if key == "network":
+                items.append(
+                    _pick_fields(
+                        item,
+                        (
+                            "interface_name",
+                            "time_since_update",
+                            "rx",
+                            "tx",
+                            "rx_cumulative",
+                            "tx_cumulative",
+                        ),
+                    )
+                )
+                continue
+            if key == "containers":
+                items.append(
+                    _pick_fields(
+                        item,
+                        ("name", "status", "cpu_percent", "memory_usage", "memory_percent"),
+                    )
+                )
+                continue
+            if key == "processlist":
+                items.append(
+                    _pick_fields(
+                        item,
+                        ("name", "pid", "cpu_percent", "memory_percent", "status"),
+                    )
+                )
+                continue
+            if key == "sensors":
+                items.append(_pick_fields(item, ("label", "value", "unit", "critical")))
+                continue
+
+            items.append(_compact_payload(item, max_depth=2, max_dict_keys=12, max_list_items=4))
+
+        if len(payload) > max_items:
+            items.append({"_truncated_items": len(payload) - max_items})
+        return items
+
+    return _round_num(payload)
+
+
 def _fallback_summary(locale: str, label: str, payload: object) -> str:
     header = t("glances.detail_header", locale=locale, label=label)
     lines = [header]
@@ -193,11 +320,12 @@ def _fallback_summary(locale: str, label: str, payload: object) -> str:
 async def _summarize_payload(*, locale: str, label: str, key: str, payload: object) -> str:
     selection = await store.get_active_model()
     system_prompt = _DETAIL_SUMMARY_SYSTEM.format(locale=locale)
+    llm_payload = _prepare_llm_payload(key, payload)
     user_prompt = (
         f"Endpoint key: {key}\n"
         f"Endpoint label: {label}\n"
         "Live endpoint payload (JSON):\n"
-        f"{_serialize_for_llm(payload)}"
+        f"{_serialize_for_llm(llm_payload)}"
     )
 
     try:
@@ -209,6 +337,69 @@ async def _summarize_payload(*, locale: str, label: str, key: str, payload: obje
     except Exception:
         logger.exception("Could not summarize Glances detail via LLM for key=%s", key)
         return _fallback_summary(locale, label, payload)
+
+
+async def _stream_summary_to_query(
+    *,
+    query: object,
+    locale: str,
+    label: str,
+    key: str,
+    payload: object,
+    keyboard: InlineKeyboardMarkup,
+) -> str | None:
+    selection = await store.get_active_model()
+    system_prompt = _DETAIL_SUMMARY_SYSTEM.format(locale=locale)
+    llm_payload = _prepare_llm_payload(key, payload)
+    user_prompt = (
+        f"Endpoint key: {key}\n"
+        f"Endpoint label: {label}\n"
+        "Live endpoint payload (JSON):\n"
+        f"{_serialize_for_llm(llm_payload)}"
+    )
+
+    header = t("glances.detail_header", locale=locale, label=label)
+    summary = ""
+    last_pushed = ""
+    last_edit_at = 0.0
+
+    try:
+        async for chunk in llm_router.stream_chat(selection, system_prompt, user_prompt):
+            if not chunk:
+                continue
+            summary += chunk
+            now = time.monotonic()
+
+            candidate = summary.strip()
+            if not candidate:
+                continue
+
+            if (now - last_edit_at) < _STREAM_EDIT_INTERVAL_SECONDS and candidate == last_pushed:
+                continue
+
+            await _safe_edit_detail(
+                query=query,
+                text=f"{header}\n\n{candidate}",
+                reply_markup=keyboard,
+            )
+            last_pushed = candidate
+            last_edit_at = now
+    except Exception:
+        logger.exception("Could not stream Glances detail summary for key=%s", key)
+        return None
+
+    final_text = summary.strip()
+    if not final_text:
+        return None
+
+    if final_text != last_pushed:
+        await _safe_edit_detail(
+            query=query,
+            text=f"{header}\n\n{final_text}",
+            reply_markup=keyboard,
+        )
+
+    return final_text
 
 
 async def _safe_edit_detail(
@@ -343,6 +534,8 @@ async def _render_detail(update: Update, *, key: str) -> None:
 
     payload: object | None = None
     query = update.callback_query
+    start = time.monotonic()
+    keyboard = _detail_keyboard(locale, key)
 
     if query is not None:
         try:
@@ -351,14 +544,47 @@ async def _render_detail(update: Update, *, key: str) -> None:
             await _safe_edit_detail(
                 query=query,
                 text=f"{loading_header}\n\n{loading_text}",
-                reply_markup=_detail_keyboard(locale, key),
+                reply_markup=keyboard,
             )
         except Exception:
             logger.debug("Could not show loading state for key=%s", key, exc_info=True)
 
     try:
+        fetch_start = time.monotonic()
         payload = await glances.get_live_endpoint_detail(key)
-        summary = await _summarize_payload(locale=locale, label=label, key=key, payload=payload)
+        fetch_elapsed = time.monotonic() - fetch_start
+        summarize_start = time.monotonic()
+
+        summary: str
+        if query is not None:
+            streamed = await _stream_summary_to_query(
+                query=query,
+                locale=locale,
+                label=label,
+                key=key,
+                payload=payload,
+                keyboard=keyboard,
+            )
+            if streamed is None:
+                summary = await _summarize_payload(
+                    locale=locale,
+                    label=label,
+                    key=key,
+                    payload=payload,
+                )
+            else:
+                summary = streamed
+        else:
+            summary = await _summarize_payload(locale=locale, label=label, key=key, payload=payload)
+
+        summarize_elapsed = time.monotonic() - summarize_start
+        logger.info(
+            "Glances detail timings key=%s fetch=%.2fs summarize=%.2fs total_so_far=%.2fs",
+            key,
+            fetch_elapsed,
+            summarize_elapsed,
+            time.monotonic() - start,
+        )
         text = f"{t('glances.detail_header', locale=locale, label=label)}\n\n{summary}"
     except Exception:
         if payload is None:
@@ -367,7 +593,6 @@ async def _render_detail(update: Update, *, key: str) -> None:
         else:
             text = _fallback_summary(locale, label, payload)
 
-    keyboard = _detail_keyboard(locale, key)
     if query is None:
         if update.effective_message:
             await update.effective_message.reply_text(
@@ -376,6 +601,7 @@ async def _render_detail(update: Update, *, key: str) -> None:
             )
         return
     await _safe_edit_detail(query=query, text=text, reply_markup=keyboard)
+    logger.info("Glances detail rendered key=%s total=%.2fs", key, time.monotonic() - start)
 
 
 @restricted
