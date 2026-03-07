@@ -15,12 +15,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added localized `glances.*` UI strings and `commands.glances` descriptions for `en`, `es`, `it`, `de`, and `fr` locales.
 - Added on-demand Glances service API `get_live_endpoint_detail(key)` with allowlisted endpoint keys.
 - Added German and French locale files (`locale/de.json`, `locale/fr.json`) with full translations for commands, keyboard labels, handlers, errors, and alert notifications.
+- Added `/author` command and handler to show the project author and GitHub profile.
+- Added `commands.author` and `author.text` locale keys for `en`, `es`, `it`, `de`, and `fr`.
+- Added `glances.loading` locale key for localized loading state messages in the Glances detail flow.
 
 ### Changed
 
 - Added a soft status response template in chat prompts so status answers keep a consistent structure without becoming restrictive.
 - Updated help text and README to document the new `/glances` command and inline details flow.
 - Updated i18n tests to reflect the expanded supported locale set and current locale fallback behavior.
+- Changed Glances detail output from raw JSON to LLM-generated summaries based on the selected endpoint payload.
+- Enabled streaming responses for Glances detail summaries (progressive edit updates like free-text chat).
+- Improved Glances detail robustness for Telegram callbacks and edits (`BadRequest` handling, stale callbacks, long message fallback, and not-modified edits).
+- Optimized Glances detail summarization latency by reducing endpoint payloads before sending them to the LLM and adding fetch/summarize timing logs.
+- Simplified Glances detail header wording to remove "live" phrasing and use cleaner labels across locales.
 
 ## [0.0.2] - 2026-03-06
 
