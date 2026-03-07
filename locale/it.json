@@ -35,6 +35,7 @@
     "header": "🔎 Menu dettagli Glances",
     "menu_hint": "Scegli un endpoint per ottenere ora quel dettaglio live.",
     "detail_header": "ℹ️ Dettaglio live: {label}",
+    "loading": "⏳ Loading...",
     "refresh_button": "🔄 Aggiorna",
     "back_button": "↩️ Indietro",
     "close_button": "❌ Chiudi",

@@ -35,6 +35,7 @@
     "header": "🔎 Glances Detail Menu",
     "menu_hint": "Pick one endpoint to fetch a live detail snapshot now.",
     "detail_header": "ℹ️ Live detail: {label}",
+    "loading": "⏳ Loading...",
     "refresh_button": "🔄 Refresh",
     "back_button": "↩️ Back",
     "close_button": "❌ Close",

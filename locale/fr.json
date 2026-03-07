@@ -35,6 +35,7 @@
     "header": "🔎 Menu de détails Glances",
     "menu_hint": "Choisissez un endpoint pour récupérer immédiatement un détail en direct.",
     "detail_header": "ℹ️ Détail en direct : {label}",
+    "loading": "⏳ Loading...",
     "refresh_button": "🔄 Actualiser",
     "back_button": "↩️ Retour",
     "close_button": "❌ Fermer",

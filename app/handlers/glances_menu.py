@@ -46,7 +46,7 @@ _MENU_KEYS: tuple[str, ...] = (
 
 _TELEGRAM_MAX_TEXT_LENGTH = 4096
 _TELEGRAM_HARD_FALLBACK_LENGTH = 1000
-_MAX_DETAIL_JSON_FOR_LLM = 12000
+_MAX_DETAIL_JSON_FOR_LLM = 5000
 
 _DETAIL_SUMMARY_SYSTEM = """\
 You are ServerWatch, a concise server monitoring assistant.
@@ -95,11 +95,65 @@ def _fit_for_telegram(text: str) -> str:
 
 
 def _serialize_for_llm(payload: object) -> str:
-    serialized = json.dumps(payload, ensure_ascii=True)
+    serialized = json.dumps(_compact_payload(payload), ensure_ascii=True)
     if len(serialized) <= _MAX_DETAIL_JSON_FOR_LLM:
         return serialized
     suffix = "...[truncated]"
     return serialized[: _MAX_DETAIL_JSON_FOR_LLM - len(suffix)] + suffix
+
+
+def _compact_payload(
+    payload: object,
+    *,
+    depth: int = 0,
+    max_depth: int = 3,
+    max_dict_keys: int = 25,
+    max_list_items: int = 8,
+) -> object:
+    """Reduce large endpoint payloads before sending them to the LLM."""
+    if depth >= max_depth:
+        if isinstance(payload, str):
+            return payload[:200]
+        if isinstance(payload, (int, float, bool)) or payload is None:
+            return payload
+        return str(type(payload).__name__)
+
+    if isinstance(payload, dict):
+        compact: dict[str, object] = {}
+        for idx, (key, value) in enumerate(payload.items()):
+            if idx >= max_dict_keys:
+                compact["_truncated_keys"] = len(payload) - max_dict_keys
+                break
+            compact[str(key)] = _compact_payload(
+                value,
+                depth=depth + 1,
+                max_depth=max_depth,
+                max_dict_keys=max_dict_keys,
+                max_list_items=max_list_items,
+            )
+        return compact
+
+    if isinstance(payload, list):
+        compact_list: list[object] = []
+        for idx, item in enumerate(payload):
+            if idx >= max_list_items:
+                compact_list.append({"_truncated_items": len(payload) - max_list_items})
+                break
+            compact_list.append(
+                _compact_payload(
+                    item,
+                    depth=depth + 1,
+                    max_depth=max_depth,
+                    max_dict_keys=max_dict_keys,
+                    max_list_items=max_list_items,
+                )
+            )
+        return compact_list
+
+    if isinstance(payload, str):
+        return payload[:400]
+
+    return payload
 
 
 def _fallback_summary(locale: str, label: str, payload: object) -> str:
@@ -168,10 +222,22 @@ async def _safe_edit_detail(
         await query.edit_message_text(candidate, reply_markup=reply_markup)
     except BadRequest as exc:
         lower = str(exc).lower()
+        if "message is not modified" in lower:
+            return
         if "message is too long" not in lower and "message_too_long" not in lower:
             raise
         short = _fit_for_telegram(candidate[:_TELEGRAM_HARD_FALLBACK_LENGTH])
         await query.edit_message_text(short, reply_markup=reply_markup)
+
+
+async def _safe_answer(query: object) -> None:
+    if not hasattr(query, "answer"):
+        return
+    try:
+        await query.answer()
+    except BadRequest as exc:
+        # Can happen when callback query is already too old by the time it is processed.
+        logger.warning("Could not answer callback query: %s", exc)
 
 
 def _menu_keyboard(locale: str) -> InlineKeyboardMarkup:
@@ -276,6 +342,20 @@ async def _render_detail(update: Update, *, key: str) -> None:
     label = _label_for_key(key, locale)
 
     payload: object | None = None
+    query = update.callback_query
+
+    if query is not None:
+        try:
+            loading_header = t("glances.detail_header", locale=locale, label=label)
+            loading_text = t("glances.loading", locale=locale)
+            await _safe_edit_detail(
+                query=query,
+                text=f"{loading_header}\n\n{loading_text}",
+                reply_markup=_detail_keyboard(locale, key),
+            )
+        except Exception:
+            logger.debug("Could not show loading state for key=%s", key, exc_info=True)
+
     try:
         payload = await glances.get_live_endpoint_detail(key)
         summary = await _summarize_payload(locale=locale, label=label, key=key, payload=payload)
@@ -288,7 +368,6 @@ async def _render_detail(update: Update, *, key: str) -> None:
             text = _fallback_summary(locale, label, payload)
 
     keyboard = _detail_keyboard(locale, key)
-    query = update.callback_query
     if query is None:
         if update.effective_message:
             await update.effective_message.reply_text(
@@ -311,7 +390,7 @@ async def cb_open(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     if query is None:
         return
-    await query.answer()
+    await _safe_answer(query)
     await _render_menu(update, edit=True)
 
 
@@ -320,7 +399,7 @@ async def cb_select(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     if query is None:
         return
-    await query.answer()
+    await _safe_answer(query)
 
     key = (query.data or "").replace(_CB_SELECT_PREFIX, "", 1)
     if key not in _MENU_KEYS:
@@ -336,7 +415,7 @@ async def cb_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     query = update.callback_query
     if query is None:
         return
-    await query.answer()
+    await _safe_answer(query)
 
     key = (query.data or "").replace(_CB_REFRESH_PREFIX, "", 1)
     if key not in _MENU_KEYS:
@@ -352,7 +431,7 @@ async def cb_back(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     if query is None:
         return
-    await query.answer()
+    await _safe_answer(query)
     await _render_menu(update, edit=True)
 
 
@@ -361,7 +440,7 @@ async def cb_close(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     if query is None:
         return
-    await query.answer()
+    await _safe_answer(query)
 
     if query.message is None:
         return

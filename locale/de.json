@@ -35,6 +35,7 @@
     "header": "🔎 Glances-Detailmenü",
     "menu_hint": "Wähle einen Endpoint, um jetzt einen Live-Detail-Snapshot abzurufen.",
     "detail_header": "ℹ️ Live-Detail: {label}",
+    "loading": "⏳ Loading...",
     "refresh_button": "🔄 Aktualisieren",
     "back_button": "↩️ Zurück",
     "close_button": "❌ Schließen",
