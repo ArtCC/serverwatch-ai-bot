@@ -14,11 +14,13 @@ from typing import cast
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Message, Update
 from telegram.constants import ChatAction
+from telegram.error import BadRequest
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
 
+from app.core import store
 from app.core.auth import restricted
 from app.core.config import get_config
-from app.services import glances
+from app.services import glances, llm_router
 from app.utils.i18n import locale_from_update, t
 
 logger = logging.getLogger("serverwatch")
@@ -43,6 +45,22 @@ _MENU_KEYS: tuple[str, ...] = (
 )
 
 _TELEGRAM_MAX_TEXT_LENGTH = 4096
+_TELEGRAM_HARD_FALLBACK_LENGTH = 1000
+_MAX_DETAIL_JSON_FOR_LLM = 12000
+
+_DETAIL_SUMMARY_SYSTEM = """\
+You are ServerWatch, a concise server monitoring assistant.
+You are given live metrics from one Glances endpoint and must summarize them for Telegram.
+
+Rules:
+- Always reply in the user's language (locale: {locale}).
+- Plain text only (no markdown, no code blocks, no JSON).
+- Keep it short and practical (4-8 lines).
+- Start with one status line: good / warning / critical.
+- Mention only the most relevant facts from the provided data.
+- End with one actionable recommendation or "No immediate action needed".
+- Never invent metrics that are not present.
+"""
 
 
 def open_menu_callback_data() -> str:
@@ -66,10 +84,94 @@ def _label_for_key(key: str, locale: str) -> str:
     return labels.get(key, key)
 
 
-def _truncate_for_telegram(text: str) -> str:
+def _fit_for_telegram(text: str) -> str:
     if len(text) <= _TELEGRAM_MAX_TEXT_LENGTH:
         return text
-    return text[: _TELEGRAM_MAX_TEXT_LENGTH - 25] + "\n\n...[truncated]"
+    suffix = "\n\n...[truncated]"
+    max_body = _TELEGRAM_MAX_TEXT_LENGTH - len(suffix)
+    if max_body <= 0:
+        return text[:_TELEGRAM_MAX_TEXT_LENGTH]
+    return text[:max_body] + suffix
+
+
+def _serialize_for_llm(payload: object) -> str:
+    serialized = json.dumps(payload, ensure_ascii=True)
+    if len(serialized) <= _MAX_DETAIL_JSON_FOR_LLM:
+        return serialized
+    suffix = "...[truncated]"
+    return serialized[: _MAX_DETAIL_JSON_FOR_LLM - len(suffix)] + suffix
+
+
+def _fallback_summary(locale: str, label: str, payload: object) -> str:
+    header = t("glances.detail_header", locale=locale, label=label)
+    lines = [header]
+
+    if isinstance(payload, dict):
+        scalar_items: list[tuple[str, object]] = []
+        for key, value in payload.items():
+            if isinstance(value, (str, int, float, bool)):
+                scalar_items.append((str(key), value))
+        if scalar_items:
+            lines.append("")
+            lines.append("Summary")
+            for key, value in scalar_items[:6]:
+                lines.append(f"- {key}: {value}")
+        else:
+            lines.append("")
+            lines.append("No compact scalar metrics available for this endpoint right now.")
+    elif isinstance(payload, list):
+        lines.append("")
+        lines.append(f"Items returned: {len(payload)}")
+        if payload and isinstance(payload[0], dict):
+            first = payload[0]
+            name = first.get("name") if isinstance(first, dict) else None
+            if name:
+                lines.append(f"First item: {name}")
+    else:
+        lines.append("")
+        lines.append(f"Value: {payload}")
+
+    lines.append("")
+    lines.append("No immediate action needed")
+    return "\n".join(lines)
+
+
+async def _summarize_payload(*, locale: str, label: str, key: str, payload: object) -> str:
+    selection = await store.get_active_model()
+    system_prompt = _DETAIL_SUMMARY_SYSTEM.format(locale=locale)
+    user_prompt = (
+        f"Endpoint key: {key}\n"
+        f"Endpoint label: {label}\n"
+        "Live endpoint payload (JSON):\n"
+        f"{_serialize_for_llm(payload)}"
+    )
+
+    try:
+        summary = await llm_router.chat(selection, system_prompt, user_prompt)
+        text = summary.strip()
+        if not text:
+            raise ValueError("empty summary")
+        return text
+    except Exception:
+        logger.exception("Could not summarize Glances detail via LLM for key=%s", key)
+        return _fallback_summary(locale, label, payload)
+
+
+async def _safe_edit_detail(
+    *, query: object, text: str, reply_markup: InlineKeyboardMarkup
+) -> None:
+    if not hasattr(query, "edit_message_text"):
+        return
+
+    candidate = _fit_for_telegram(text)
+    try:
+        await query.edit_message_text(candidate, reply_markup=reply_markup)
+    except BadRequest as exc:
+        lower = str(exc).lower()
+        if "message is too long" not in lower and "message_too_long" not in lower:
+            raise
+        short = _fit_for_telegram(candidate[:_TELEGRAM_HARD_FALLBACK_LENGTH])
+        await query.edit_message_text(short, reply_markup=reply_markup)
 
 
 def _menu_keyboard(locale: str) -> InlineKeyboardMarkup:
@@ -173,22 +275,28 @@ async def _render_detail(update: Update, *, key: str) -> None:
     locale = locale_from_update(update, fallback=get_config().bot_locale)
     label = _label_for_key(key, locale)
 
+    payload: object | None = None
     try:
         payload = await glances.get_live_endpoint_detail(key)
-        payload_json = json.dumps(payload, ensure_ascii=True, indent=2)
-        body = _truncate_for_telegram(payload_json)
-        text = f"{t('glances.detail_header', locale=locale, label=label)}\n\n{body}"
+        summary = await _summarize_payload(locale=locale, label=label, key=key, payload=payload)
+        text = f"{t('glances.detail_header', locale=locale, label=label)}\n\n{summary}"
     except Exception:
-        logger.exception("Could not fetch live Glances detail for key=%s", key)
-        text = t("glances.unavailable", locale=locale, label=label)
+        if payload is None:
+            logger.exception("Could not fetch live Glances detail for key=%s", key)
+            text = t("glances.unavailable", locale=locale, label=label)
+        else:
+            text = _fallback_summary(locale, label, payload)
 
     keyboard = _detail_keyboard(locale, key)
     query = update.callback_query
     if query is None:
         if update.effective_message:
-            await update.effective_message.reply_text(text, reply_markup=keyboard)
+            await update.effective_message.reply_text(
+                _fit_for_telegram(text),
+                reply_markup=keyboard,
+            )
         return
-    await query.edit_message_text(text, reply_markup=keyboard)
+    await _safe_edit_detail(query=query, text=text, reply_markup=keyboard)
 
 
 @restricted
