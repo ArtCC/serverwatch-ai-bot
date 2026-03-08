@@ -11,6 +11,7 @@ import json
 import logging
 import time
 from dataclasses import dataclass
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
@@ -189,20 +190,16 @@ async def get_live_endpoint_detail(key: str) -> object:
         raise ValueError(f"Unsupported Glances detail endpoint: {key}")
 
     cfg = get_config()
-    base_url = cfg.glances_base_url.rstrip("/")
     client = await _get_client()
-    response = await client.get(f"{base_url}{path}")
-    response.raise_for_status()
-    return response.json()
+    return await _get_json_with_fallback(client, cfg.glances_base_url, path)
 
 
 async def _fetch_snapshot() -> ServerSnapshot:
     """Internal: always performs live HTTP requests to Glances."""
     cfg = get_config()
-    base_url = cfg.glances_base_url.rstrip("/")
 
     client = await _get_client()
-    payload = await _fetch_all(client, base_url)
+    payload = await _fetch_all(client, cfg.glances_base_url)
 
     if cfg.glances_log_full_payload:
         logger.info("Glances aggregated payload: %s", json.dumps(payload, ensure_ascii=True))
@@ -262,9 +259,8 @@ async def _fetch_all(client: httpx.AsyncClient, base_url: str) -> dict[str, obje
 
     async def _fetch_endpoint(key: str, path: str) -> tuple[str, object]:
         try:
-            response = await client.get(f"{base_url}{path}")
-            response.raise_for_status()
-            return key, response.json()
+            payload = await _get_json_with_fallback(client, base_url, path)
+            return key, payload
         except Exception as exc:  # noqa: BLE001
             return key, {"_error": str(exc), "_endpoint": path}
 
@@ -272,6 +268,76 @@ async def _fetch_all(client: httpx.AsyncClient, base_url: str) -> dict[str, obje
         *(_fetch_endpoint(key, path) for key, path in _ENDPOINTS),
     )
     return {key: value for key, value in results}
+
+
+def _base_url_candidates(base_url: str) -> tuple[str, ...]:
+    primary = base_url.rstrip("/")
+    parsed = urlsplit(primary)
+    if parsed.hostname != "glances":
+        return (primary,)
+
+    if parsed.port is None:
+        fallback_netloc = "host.docker.internal"
+    else:
+        fallback_netloc = f"host.docker.internal:{parsed.port}"
+
+    # Preserve credentials if the user configured them.
+    if parsed.username:
+        userinfo = parsed.username
+        if parsed.password:
+            userinfo = f"{userinfo}:{parsed.password}"
+        fallback_netloc = f"{userinfo}@{fallback_netloc}"
+
+    fallback = urlunsplit(
+        (
+            parsed.scheme,
+            fallback_netloc,
+            parsed.path,
+            parsed.query,
+            parsed.fragment,
+        )
+    ).rstrip("/")
+    if fallback == primary:
+        return (primary,)
+    return (primary, fallback)
+
+
+def _is_name_resolution_error(exc: httpx.ConnectError) -> bool:
+    text = str(exc).lower()
+    return "name or service not known" in text or "nodename nor servname provided" in text
+
+
+async def _get_json_with_fallback(
+    client: httpx.AsyncClient,
+    base_url: str,
+    path: str,
+) -> object:
+    candidates = _base_url_candidates(base_url)
+    last_error: Exception | None = None
+
+    for index, candidate in enumerate(candidates):
+        url = f"{candidate}{path}"
+        try:
+            response = await client.get(url)
+            response.raise_for_status()
+            return response.json()
+        except httpx.ConnectError as exc:
+            last_error = exc
+            is_last = index == len(candidates) - 1
+            if is_last or not _is_name_resolution_error(exc):
+                raise
+            logger.warning(
+                "Glances host resolution failed for %s (%s); retrying with fallback base URL",
+                candidate,
+                exc,
+            )
+        except Exception as exc:  # noqa: BLE001
+            last_error = exc
+            raise
+
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("No Glances base URL candidates available")
 
 
 def _num(value: object) -> float:
