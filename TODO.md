@@ -74,5 +74,5 @@
 - [x] Update i18n tests to reflect the expanded supported locale set.
 
 ## Release and Documentation
-- [x] Bump version to `0.0.3` in `pyproject.toml` and update `CHANGELOG.md`.
+- [x] Bump version to `0.0.4` in `pyproject.toml` and update `CHANGELOG.md`.
 - [x] Update `README.md` with `/glances`, inline detail flow, and supported locales (`en`, `es`, `it`, `de`, `fr`).

@@ -15,7 +15,7 @@ from typing import cast
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Message, Update
 from telegram.constants import ChatAction
-from telegram.error import BadRequest
+from telegram.error import BadRequest, TelegramError, TimedOut
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
 
 from app.core import store
@@ -377,11 +377,13 @@ async def _stream_summary_to_query(
             if (now - last_edit_at) < _STREAM_EDIT_INTERVAL_SECONDS and candidate == last_pushed:
                 continue
 
-            await _safe_edit_detail(
+            edited = await _safe_edit_detail(
                 query=query,
                 text=f"{header}\n\n{candidate}",
                 reply_markup=keyboard,
             )
+            if not edited:
+                return None
             last_pushed = candidate
             last_edit_at = now
     except Exception:
@@ -393,32 +395,53 @@ async def _stream_summary_to_query(
         return None
 
     if final_text != last_pushed:
-        await _safe_edit_detail(
+        edited = await _safe_edit_detail(
             query=query,
             text=f"{header}\n\n{final_text}",
             reply_markup=keyboard,
         )
+        if not edited:
+            return None
 
     return final_text
 
 
 async def _safe_edit_detail(
     *, query: object, text: str, reply_markup: InlineKeyboardMarkup
-) -> None:
+) -> bool:
     if not hasattr(query, "edit_message_text"):
-        return
+        return False
 
     candidate = _fit_for_telegram(text)
     try:
         await query.edit_message_text(candidate, reply_markup=reply_markup)
+        return True
     except BadRequest as exc:
         lower = str(exc).lower()
         if "message is not modified" in lower:
-            return
+            return True
+        # Benign races: user closed/deleted message while this handler was still running.
+        if "message to edit not found" in lower or "message can't be edited" in lower:
+            logger.info("Skipping detail edit because message is gone or not editable: %s", exc)
+            return False
+
         if "message is too long" not in lower and "message_too_long" not in lower:
-            raise
+            logger.warning("Unexpected bad request editing Glances detail: %s", exc)
+            return False
+
         short = _fit_for_telegram(candidate[:_TELEGRAM_HARD_FALLBACK_LENGTH])
-        await query.edit_message_text(short, reply_markup=reply_markup)
+        try:
+            await query.edit_message_text(short, reply_markup=reply_markup)
+            return True
+        except (BadRequest, TimedOut, TelegramError) as short_exc:
+            logger.warning("Could not edit shortened Glances detail message: %s", short_exc)
+            return False
+    except TimedOut as exc:
+        logger.warning("Timed out editing Glances detail message: %s", exc)
+        return False
+    except TelegramError as exc:
+        logger.warning("Telegram error editing Glances detail message: %s", exc)
+        return False
 
 
 async def _safe_answer(query: object) -> None:
@@ -429,6 +452,25 @@ async def _safe_answer(query: object) -> None:
     except BadRequest as exc:
         # Can happen when callback query is already too old by the time it is processed.
         logger.warning("Could not answer callback query: %s", exc)
+    except TimedOut as exc:
+        logger.warning("Timed out answering callback query: %s", exc)
+    except TelegramError as exc:
+        logger.warning("Telegram error answering callback query: %s", exc)
+
+
+async def _safe_delete_message(message: Message) -> None:
+    try:
+        await message.delete()
+    except BadRequest as exc:
+        lower = str(exc).lower()
+        if "message to delete not found" in lower:
+            logger.info("Glances message already deleted before close callback")
+            return
+        logger.warning("Could not delete Glances menu message on close: %s", exc)
+    except TimedOut as exc:
+        logger.warning("Timed out deleting Glances menu message on close: %s", exc)
+    except TelegramError as exc:
+        logger.warning("Telegram error deleting Glances menu message on close: %s", exc)
 
 
 def _menu_keyboard(locale: str) -> InlineKeyboardMarkup:
@@ -521,7 +563,11 @@ async def _render_menu(update: Update, *, edit: bool) -> None:
     keyboard = _menu_keyboard(locale)
 
     if edit and update.callback_query:
-        await update.callback_query.edit_message_text(text, reply_markup=keyboard)
+        await _safe_edit_detail(
+            query=update.callback_query,
+            text=text,
+            reply_markup=keyboard,
+        )
         return
 
     if update.effective_message:
@@ -670,11 +716,7 @@ async def cb_close(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     if query.message is None:
         return
-
-    try:
-        await cast(Message, query.message).delete()
-    except Exception:
-        logger.warning("Could not delete Glances menu message on close", exc_info=True)
+    await _safe_delete_message(cast(Message, query.message))
 
 
 def register(app: Application) -> None:

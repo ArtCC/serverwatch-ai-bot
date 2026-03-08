@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.4] - 2026-03-08
+
+### Changed
+
+- Improved Glances API connectivity resilience: when `GLANCES_BASE_URL` points to `http://glances:...`, requests now retry automatically via `http://host.docker.internal:...` on DNS resolution failures (for example, `Name or service not known`).
+- Hardened `/glances` detail callback flow against Telegram API races/timeouts while streaming summaries.
+- Prevented close-button crashes in `/glances` detail view by safely handling callback answer, message edit, and message delete errors (`TimedOut`, stale/deleted message, and non-editable message scenarios).
+
 ## [0.0.3] - 2026-03-07
 
 ### Added
