@@ -245,11 +245,14 @@ def _prepare_llm_payload(key: str, payload: object) -> object:
                         item,
                         (
                             "interface_name",
+                            "is_up",
+                            "speed",
                             "time_since_update",
-                            "rx",
-                            "tx",
-                            "rx_cumulative",
-                            "tx_cumulative",
+                            "bytes_recv_rate_per_sec",
+                            "bytes_sent_rate_per_sec",
+                            "bytes_all_rate_per_sec",
+                            "bytes_recv_gauge",
+                            "bytes_sent_gauge",
                         ),
                     )
                 )
@@ -258,7 +261,17 @@ def _prepare_llm_payload(key: str, payload: object) -> object:
                 items.append(
                     _pick_fields(
                         item,
-                        ("name", "status", "cpu_percent", "memory_usage", "memory_percent"),
+                        (
+                            "name",
+                            "status",
+                            "cpu_percent",
+                            "memory_usage",
+                            "memory_limit",
+                            "io_rx",
+                            "io_wx",
+                            "network_rx",
+                            "network_tx",
+                        ),
                     )
                 )
                 continue
@@ -266,12 +279,22 @@ def _prepare_llm_payload(key: str, payload: object) -> object:
                 items.append(
                     _pick_fields(
                         item,
-                        ("name", "pid", "cpu_percent", "memory_percent", "status"),
+                        (
+                            "name",
+                            "pid",
+                            "cpu_percent",
+                            "memory_percent",
+                            "status",
+                            "username",
+                            "num_threads",
+                        ),
                     )
                 )
                 continue
             if key == "sensors":
-                items.append(_pick_fields(item, ("label", "value", "unit", "critical")))
+                items.append(
+                    _pick_fields(item, ("label", "type", "value", "unit", "warning", "critical"))
+                )
                 continue
 
             items.append(_compact_payload(item, max_depth=2, max_dict_keys=12, max_list_items=4))

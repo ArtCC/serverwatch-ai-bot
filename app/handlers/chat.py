@@ -342,7 +342,7 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             system_prompt = _append_status_template(
                 _SYSTEM_WITH_METRICS.format(
                     locale=locale,
-                    metrics_json=snapshot.as_raw_json(),
+                    metrics_json=snapshot.as_llm_context_json(),
                 ),
                 enabled=status_like_request,
             )

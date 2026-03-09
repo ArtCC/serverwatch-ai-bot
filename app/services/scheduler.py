@@ -91,6 +91,48 @@ async def check_and_alert(context: ContextTypes.DEFAULT_TYPE) -> None:
             # Roll back the timestamp so the alert retries on next cycle.
             last[metric] = last_sent
 
+    # Global health alert based on the enriched snapshot scoring layer.
+    # Warning and critical are treated separately to avoid duplicated spam.
+    health_metric = f"health:{snapshot.health_level}"
+    if snapshot.health_level == "good":
+        last.pop("health:warning", None)
+        last.pop("health:critical", None)
+        return
+
+    health_last_sent = last.get(health_metric, 0.0)
+    if now - health_last_sent < cooldown:
+        logger.debug(
+            "Health alert suppressed (level=%s score=%d cooldown remaining=%.0fs)",
+            snapshot.health_level,
+            snapshot.health_score,
+            cooldown - (now - health_last_sent),
+        )
+        return
+
+    last[health_metric] = now
+    icon = "⚠️" if snapshot.health_level == "warning" else "❌"
+    details = "; ".join(snapshot.key_findings[:2])
+    text = (
+        f"{icon} *Health alert*: level *{snapshot.health_level.upper()}* "
+        f"(score: {snapshot.health_score}/100)\n"
+        f"Top findings: {details}\n"
+        f"Action: {snapshot.recommended_action}"
+    )
+    logger.info(
+        "Sending health alert level=%s score=%d",
+        snapshot.health_level,
+        snapshot.health_score,
+    )
+    try:
+        await context.bot.send_message(
+            chat_id=cfg.telegram_chat_id,
+            text=text,
+            parse_mode=ParseMode.MARKDOWN,
+        )
+    except Exception:
+        logger.exception("Failed to send health alert")
+        last[health_metric] = health_last_sent
+
 
 def register(app: Application) -> None:
     """Register the periodic alert check job on the Application's job queue."""

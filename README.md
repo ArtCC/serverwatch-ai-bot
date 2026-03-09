@@ -30,6 +30,13 @@ The bot uses the Glances REST API v4 (`GLANCES_BASE_URL`) and currently fetches
 metrics through individual endpoints (not `/all`) to keep requests focused and
 reduce prompt size.
 
+The metrics pipeline now includes three layers:
+
+- `Snapshot layer`: live endpoint fetch with short cache (`10s`) and fallback host resolution.
+- `Operational layer`: health score (`0-100`), severity (`good|warning|critical`), key findings,
+  and next-action hints built from thresholds + live values.
+- `AI context layer`: compact JSON payload for chat prompts (high signal, low noise).
+
 When metrics are requested (`/status`, refresh button, or free-text chat), the
 bot queries this fixed bundle in parallel:
 
@@ -51,6 +58,10 @@ bot queries this fixed bundle in parallel:
 - `/core`
 - `/version`
 - `/pluginslist`
+- `/all/limits`
+- `/cpu/total/history/3`
+- `/mem/percent/history/3`
+- `/load/min1/history/3`
 
 Notes:
 
@@ -60,6 +71,12 @@ Notes:
 - By default, the bot logs only aggregated payload keys at `DEBUG` level.
 - Set `GLANCES_LOG_FULL_PAYLOAD=true` to log the full aggregated Glances JSON
   at `INFO` level for diagnostics (for example in container logs).
+- `/status` now prioritizes operational value: trends, top bottlenecks, recommended action,
+  and what to watch next.
+- Free-text AI chat now uses compact status context (`as_llm_context_json`) instead of the
+  full raw bundle to improve latency and reduce prompt noise.
+- Scheduler alerts include classic metric threshold alarms plus a global health alert
+  when the operational score degrades to warning/critical.
 
 ## Commands
 

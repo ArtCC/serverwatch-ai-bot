@@ -14,11 +14,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added context usage panel showing used characters vs configured budget, estimated tokens, active-window message count, and stored message count.
 - Added new configuration variables: `CHAT_CONTEXT_MAX_TURNS`, `CHAT_CONTEXT_MAX_CHARS`, and `CHAT_CONTEXT_RETENTION_MESSAGES`.
 - Added locale strings for context controls and context usage panel in `en`, `es`, `it`, `de`, and `fr`.
+- Added Glances limits and short-history endpoints to the snapshot bundle:
+	- `/all/limits`
+	- `/cpu/total/history/3`
+	- `/mem/percent/history/3`
+	- `/load/min1/history/3`
+- Added operational health intelligence in `ServerSnapshot`:
+	- global health score (`0-100`) and severity level (`good`, `warning`, `critical`),
+	- trend labels for CPU/RAM/LOAD (`up`, `down`, `stable`),
+	- key findings, recommended action, and watch-next hint,
+	- enriched metrics for swap, process count, top network interface throughput, and top mounts.
+- Added compact AI context serializer (`as_llm_context_json`) for high-signal, low-noise model prompts.
+- Added global health alerting in scheduler (warning/critical) with cooldown-aware deduplication.
+- Added Glances intelligence tests for trend detection, thresholds resolution, metric severity scoring, and top network interface selection.
 
 ### Changed
 
 - Free-text chat now includes bounded multi-turn history when sending requests to LLM providers (Ollama, OpenAI, Anthropic, DeepSeek).
 - Updated README to document bounded chat context behavior, context inline controls, and new environment variables.
+- Free-text chat now uses compact operational Glances context instead of the full aggregated raw payload.
+- `/status` output now prioritizes operational clarity with health scoring, trends, key findings, recommended action, and watch-next guidance.
+- `/glances` endpoint summaries now extract more useful fields for real diagnostics:
+	- network rates and interface state (`bytes_*_rate_per_sec`, `is_up`, `speed`),
+	- container IO/network and memory limits,
+	- process owner and thread count,
+	- sensor warning/critical thresholds.
+- README Glances section was expanded with the new 3-layer metrics pipeline (snapshot, operational, AI context) and scheduler health-alert behavior.
 
 ## [0.0.4] - 2026-03-08
 

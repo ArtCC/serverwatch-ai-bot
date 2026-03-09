@@ -11,6 +11,10 @@ from app.services.glances import (
     _base_url_candidates,
     _fetch_all,
     _get_json_with_fallback,
+    _pick_top_network_interface,
+    _severity_for_metric,
+    _thresholds_for,
+    _trend_label,
 )
 
 
@@ -100,3 +104,55 @@ def test_fetch_all_uses_fallback_when_glances_host_cannot_resolve() -> None:
     assert set(payload.keys()) == {key for key, _ in _ENDPOINTS}
     assert "_error" not in payload["cpu"]
     assert payload["cpu"]["host"] == "host.docker.internal"
+
+
+def test_trend_label_detects_up_down_and_stable() -> None:
+    assert _trend_label([20.0, 21.0, 24.0], epsilon=1.5) == "up"
+    assert _trend_label([24.0, 22.0, 20.0], epsilon=1.5) == "down"
+    assert _trend_label([20.0, 20.5, 21.0], epsilon=1.5) == "stable"
+
+
+def test_thresholds_for_uses_plugin_defaults() -> None:
+    limits = {
+        "mem": {
+            "mem_warning": 70.0,
+            "mem_critical": 90.0,
+        }
+    }
+    assert _thresholds_for(limits, "mem") == (70.0, 90.0)
+
+
+def test_thresholds_for_uses_item_specific_cpu_limits() -> None:
+    limits = {
+        "cpu": {
+            "cpu_total_warning": 75.0,
+            "cpu_total_critical": 85.0,
+        }
+    }
+    assert _thresholds_for(limits, "cpu", item="total") == (75.0, 85.0)
+
+
+def test_severity_for_metric_respects_warning_and_critical() -> None:
+    assert _severity_for_metric("CPU", 88.0, (75.0, 85.0))[1] == 25
+    assert _severity_for_metric("CPU", 76.0, (75.0, 85.0))[1] == 10
+    assert _severity_for_metric("CPU", 55.0, (75.0, 85.0))[1] == 0
+
+
+def test_pick_top_network_interface_skips_loopback_and_prefers_highest_rate() -> None:
+    network = [
+        {
+            "interface_name": "lo",
+            "bytes_recv_rate_per_sec": 10_000,
+            "bytes_sent_rate_per_sec": 10_000,
+            "is_up": True,
+        },
+        {
+            "interface_name": "eth0",
+            "bytes_recv_rate_per_sec": 20_000,
+            "bytes_sent_rate_per_sec": 30_000,
+            "is_up": True,
+        },
+    ]
+
+    picked = _pick_top_network_interface(network)
+    assert picked["interface_name"] == "eth0"
