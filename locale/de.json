@@ -5,6 +5,7 @@
     "alerts": "Alarmgrenzwerte anzeigen oder ändern",
     "glances": "Live-Glances-Detailmenü öffnen",
     "models": "KI-Modell auflisten und wechseln",
+    "context": "Nutzung des Chat-Kontexts anzeigen",
     "author": "Autorenprofil anzeigen",
     "help": "Hilfe anzeigen"
   },

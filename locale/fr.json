@@ -5,6 +5,7 @@
     "alerts": "Voir ou modifier les seuils d'alerte",
     "glances": "Ouvrir le menu de détails Glances en direct",
     "models": "Lister et changer le modèle IA",
+    "context": "Afficher l'utilisation du contexte du chat",
     "author": "Afficher le profil de l'auteur",
     "help": "Afficher l'aide"
   },

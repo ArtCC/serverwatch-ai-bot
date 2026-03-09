@@ -5,6 +5,7 @@
     "alerts": "Ver o actualizar umbrales",
     "glances": "Abrir menu de detalles de Glances",
     "models": "Listar y cambiar modelo IA",
+    "context": "Mostrar uso del contexto del chat",
     "author": "Mostrar perfil del autor",
     "help": "Mostrar ayuda de uso"
   },

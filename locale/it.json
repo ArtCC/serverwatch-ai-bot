@@ -5,6 +5,7 @@
     "alerts": "Vedi o aggiorna soglie alert",
     "glances": "Apri menu dettagli Glances",
     "models": "Elenca e cambia modello IA",
+    "context": "Mostra uso del contesto chat",
     "author": "Mostra profilo autore",
     "help": "Mostra guida all'uso"
   },

@@ -21,6 +21,7 @@ from telegram.error import BadRequest, NetworkError, TimedOut
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
+    CommandHandler,
     ContextTypes,
     MessageHandler,
     filters,
@@ -418,14 +419,25 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         reply_accumulated = t("chat.error", locale=locale)
 
     final_reply = _truncate_for_telegram(reply_accumulated)
+    context_keyboard = _context_entry_keyboard(locale)
 
     if final_reply != last_pushed or placeholder is None:
         await _safe_edit_or_reply(
             source_message=message,
             placeholder=placeholder,
             text=final_reply,
-            reply_markup=_context_entry_keyboard(locale),
+            reply_markup=context_keyboard,
         )
+    elif placeholder is not None:
+        try:
+            await placeholder.edit_reply_markup(reply_markup=context_keyboard)
+        except BadRequest as exc:
+            if "message is not modified" not in str(exc).lower():
+                logger.warning("Could not attach context keyboard: %s", exc)
+        except (TimedOut, NetworkError):
+            logger.warning("Telegram timeout/network error while attaching context keyboard")
+        except Exception:
+            logger.exception("Unexpected error while attaching context keyboard")
 
     await store.append_chat_context_message(chat_id, "user", message.text)
     await store.append_chat_context_message(chat_id, "assistant", final_reply)
@@ -451,6 +463,26 @@ async def cb_context_info(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         max_chars=cfg.chat_context_max_chars,
     )
 
+    await message.reply_text(
+        _context_usage_text(locale, usage),
+        reply_markup=_context_panel_keyboard(locale),
+    )
+
+
+@restricted
+async def context_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    message = update.effective_message
+    chat = update.effective_chat
+    if message is None or chat is None:
+        return
+
+    cfg = get_config()
+    locale = locale_from_update(update, fallback=cfg.bot_locale)
+    usage = await store.get_chat_context_usage(
+        chat.id,
+        max_turns=cfg.chat_context_max_turns,
+        max_chars=cfg.chat_context_max_chars,
+    )
     await message.reply_text(
         _context_usage_text(locale, usage),
         reply_markup=_context_panel_keyboard(locale),
@@ -495,6 +527,7 @@ async def cb_context_close(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 
 def register(app: Application) -> None:
+    app.add_handler(CommandHandler("context", context_command))
     app.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,

@@ -5,6 +5,7 @@
     "alerts": "View or update alert thresholds",
     "glances": "Open live Glances detail menu",
     "models": "List and switch AI model",
+    "context": "Show chat context usage",
     "author": "Show author profile",
     "help": "Show usage help"
   },

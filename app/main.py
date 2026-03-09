@@ -36,6 +36,7 @@ def _commands_for_locale(locale: str) -> list[BotCommand]:
         BotCommand("alerts", t("commands.alerts", locale=locale)),
         BotCommand("glances", t("commands.glances", locale=locale)),
         BotCommand("models", t("commands.models", locale=locale)),
+        BotCommand("context", t("commands.context", locale=locale)),
         BotCommand("author", t("commands.author", locale=locale)),
         BotCommand("help", t("commands.help", locale=locale)),
     ]
