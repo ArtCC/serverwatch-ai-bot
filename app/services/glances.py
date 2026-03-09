@@ -121,29 +121,39 @@ class ServerSnapshot:
         }.get(self.health_level, "ℹ️")
 
         lines = [
-            f"{level_icon} Health: {self.health_level.upper()} ({self.health_score}/100)",
+            (
+                f"{level_icon} {t('status.health', locale=locale)}: "
+                f"{self.health_level.upper()} ({self.health_score}/100)"
+            ),
             "",
-            f"{t('status.cpu', locale=locale)}: {self.cpu_percent:.1f}% (trend: {self.cpu_trend})",
+            (
+                f"{t('status.cpu', locale=locale)}: {self.cpu_percent:.1f}% "
+                f"({t('status.trend', locale=locale)}: {self.cpu_trend})"
+            ),
             (
                 f"{t('status.ram', locale=locale)}: {self.ram_percent:.1f}% "
-                f"({self.ram_used_gb:.1f} / {self.ram_total_gb:.1f} GB, trend: {self.ram_trend})"
+                f"({self.ram_used_gb:.1f} / {self.ram_total_gb:.1f} GB, "
+                f"{t('status.trend', locale=locale)}: {self.ram_trend})"
             ),
             (
                 f"{t('status.disk', locale=locale)}: {self.disk_percent:.1f}% "
                 f"({self.disk_used_gb:.1f} / {self.disk_total_gb:.1f} GB)"
             ),
             (
-                f"Swap: {self.swap_percent:.1f}% "
+                f"{t('status.swap', locale=locale)}: {self.swap_percent:.1f}% "
                 f"({self.swap_used_gb:.1f} / {self.swap_total_gb:.1f} GB)"
             ),
             (
                 f"{t('status.load', locale=locale)}: "
                 f"{self.load_1:.2f} / {self.load_5:.2f} / {self.load_15:.2f} "
-                f"(per-core: {self.load_per_core:.2f}, trend: {self.load_trend})"
+                f"({t('status.per_core', locale=locale)}: {self.load_per_core:.2f}, "
+                f"{t('status.trend', locale=locale)}: {self.load_trend})"
             ),
             (
-                f"Processes: {self.process_running}/{self.process_total} running | "
-                f"Net: {self.network_top_interface} "
+                f"{t('status.processes', locale=locale)}: "
+                f"{self.process_running}/{self.process_total} "
+                f"{t('status.running', locale=locale)} | "
+                f"{t('status.network', locale=locale)}: {self.network_top_interface} "
                 f"(RX {self.network_rx_bps / (1024**2):.2f} MB/s, "
                 f"TX {self.network_tx_bps / (1024**2):.2f} MB/s)"
             ),
@@ -153,17 +163,17 @@ class ServerSnapshot:
 
         if self.key_findings:
             lines.append("")
-            lines.append("Key findings")
+            lines.append(t("status.key_findings", locale=locale))
             for finding in self.key_findings[:3]:
                 lines.append(f"- {finding}")
 
         lines.append("")
-        lines.append(f"Action: {self.recommended_action}")
-        lines.append(f"Watch next: {self.watch_item}")
+        lines.append(f"{t('status.action', locale=locale)}: {self.recommended_action}")
+        lines.append(f"{t('status.watch_next', locale=locale)}: {self.watch_item}")
 
         if self.top_processes:
             lines.append("")
-            lines.append("Top processes (CPU)")
+            lines.append(t("status.top_processes", locale=locale))
             for proc in self.top_processes[:5]:
                 name = proc.get("name") or "?"
                 cpu_pct = _num(proc.get("cpu_percent", 0))
@@ -172,7 +182,7 @@ class ServerSnapshot:
 
         if self.top_mounts:
             lines.append("")
-            lines.append("Top mounts")
+            lines.append(t("status.top_mounts", locale=locale))
             for mount in self.top_mounts[:3]:
                 mount_point = str(mount.get("mnt_point") or "?")
                 mount_percent = _num(mount.get("percent", 0))
@@ -384,7 +394,7 @@ async def _fetch_snapshot() -> ServerSnapshot:
         _severity_for_metric("RAM", ram_percent, ram_thresholds),
         _severity_for_metric("Disk", disk_percent, disk_thresholds),
         _severity_for_metric("Swap", swap_percent, swap_thresholds),
-        _severity_for_metric("Load/core", load_per_core * 100.0, load_thresholds),
+        _severity_for_ratio("Load/core", load_per_core, load_thresholds),
     ]
 
     critical_mount = top_mounts[0] if top_mounts else None
@@ -423,7 +433,7 @@ async def _fetch_snapshot() -> ServerSnapshot:
         ("RAM", ram_percent),
         ("Disk", disk_percent),
         ("Swap", swap_percent),
-        ("Load/core", load_per_core * 100.0),
+        ("Load/core", load_per_core),
     ]
     watch_item = max(watch_candidates, key=lambda item: item[1])[0]
 
@@ -640,6 +650,19 @@ def _severity_for_metric(
         return name, 25, f"{name} critical at {value:.1f}% (>= {critical:.1f}%)"
     if value >= warning:
         return name, 10, f"{name} high at {value:.1f}% (>= {warning:.1f}%)"
+    return name, 0, f"{name} normal"
+
+
+def _severity_for_ratio(
+    name: str,
+    value: float,
+    thresholds: tuple[float, float],
+) -> tuple[str, int, str]:
+    warning, critical = thresholds
+    if value >= critical:
+        return name, 25, f"{name} critical at {value:.2f} (>= {critical:.2f})"
+    if value >= warning:
+        return name, 10, f"{name} high at {value:.2f} (>= {warning:.2f})"
     return name, 0, f"{name} normal"
 
 

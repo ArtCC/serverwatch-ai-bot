@@ -13,6 +13,7 @@ import time
 
 from telegram.constants import ParseMode
 from telegram.ext import Application, ContextTypes
+from telegram.helpers import escape_markdown
 
 from app.core import store
 from app.core.config import get_config
@@ -111,12 +112,13 @@ async def check_and_alert(context: ContextTypes.DEFAULT_TYPE) -> None:
 
     last[health_metric] = now
     icon = "⚠️" if snapshot.health_level == "warning" else "❌"
-    details = "; ".join(snapshot.key_findings[:2])
+    details = escape_markdown("; ".join(snapshot.key_findings[:2]))
+    action = escape_markdown(snapshot.recommended_action)
     text = (
         f"{icon} *Health alert*: level *{snapshot.health_level.upper()}* "
         f"(score: {snapshot.health_score}/100)\n"
         f"Top findings: {details}\n"
-        f"Action: {snapshot.recommended_action}"
+        f"Action: {action}"
     )
     logger.info(
         "Sending health alert level=%s score=%d",

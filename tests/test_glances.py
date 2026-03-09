@@ -13,6 +13,7 @@ from app.services.glances import (
     _get_json_with_fallback,
     _pick_top_network_interface,
     _severity_for_metric,
+    _severity_for_ratio,
     _thresholds_for,
     _trend_label,
 )
@@ -136,6 +137,12 @@ def test_severity_for_metric_respects_warning_and_critical() -> None:
     assert _severity_for_metric("CPU", 88.0, (75.0, 85.0))[1] == 25
     assert _severity_for_metric("CPU", 76.0, (75.0, 85.0))[1] == 10
     assert _severity_for_metric("CPU", 55.0, (75.0, 85.0))[1] == 0
+
+
+def test_severity_for_ratio_uses_raw_ratio_scale() -> None:
+    assert _severity_for_ratio("Load/core", 6.0, (1.0, 5.0))[1] == 25
+    assert _severity_for_ratio("Load/core", 1.2, (1.0, 5.0))[1] == 10
+    assert _severity_for_ratio("Load/core", 0.5, (1.0, 5.0))[1] == 0
 
 
 def test_pick_top_network_interface_skips_loopback_and_prefers_highest_rate() -> None:
