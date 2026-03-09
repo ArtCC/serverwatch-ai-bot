@@ -102,7 +102,12 @@
   "chat": {
     "thinking": "⏳ Réflexion…",
     "error": "❌ Une erreur s'est produite lors de la génération de la réponse. Veuillez réessayer.",
-    "provider_error": "❌ Impossible de générer une réponse avec {provider}. Vérifiez la disponibilité de l'API/du service et réessayez."
+    "provider_error": "❌ Impossible de générer une réponse avec {provider}. Vérifiez la disponibilité de l'API/du service et réessayez.",
+    "context_button_info": "ℹ️ Contexte",
+    "context_button_clear": "🧹 Vider",
+    "context_button_close": "❌ Fermer",
+    "context_info": "ℹ️ Utilisation du contexte\nCaracteres utilises: {used_chars}/{max_chars} ({used_pct}%)\nTokens estimes: {used_tokens}/{max_tokens}\nMessages dans la fenetre active: {used_messages}/{max_messages}\nMessages stockes: {stored_messages}",
+    "context_cleared": "✅ Contexte vide."
   },
   "errors": {
     "unauthorized": "👋 Bonjour ! Ce bot est privé et accessible uniquement à son propriétaire. Si vous pensez qu'il s'agit d'une erreur, veuillez contacter l'administrateur.",

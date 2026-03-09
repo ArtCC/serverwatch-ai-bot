@@ -21,6 +21,9 @@ Supported locales: `en`, `es`, `it`, `de`, `fr`.
 4. The prompt is sent to the currently active model option (`ollama`, `openai`, `anthropic`, or `deepseek`).
 5. The reply is sent back in Telegram.
 
+Free-text chat now uses a bounded multi-turn context window (turns + char budget)
+so follow-up questions keep continuity without unbounded prompt growth.
+
 ## Glances usage
 
 The bot uses the Glances REST API v4 (`GLANCES_BASE_URL`) and currently fetches
@@ -81,6 +84,7 @@ Notes:
 - `Model selection` (`/models`): lists all local Ollama models and optionally cloud provider options (`OpenAI`, `Anthropic`, `DeepSeek`) when API key and model are configured. Active option is marked with `✅`.
 - `Alert thresholds` (`/alerts`): edit CPU/RAM/Disk thresholds with confirmation.
 - `Glances details` (`/glances` or inline button from `/status`): open a live menu and fetch one Glances endpoint on demand (CPU, RAM, disk, network, containers, top processes, etc.).
+- `Chat context controls` (free-text replies): `ℹ️ Context` shows current context usage; panel includes `🧹 Clear` and `❌ Close`.
 
 ## Architecture tree
 
@@ -145,6 +149,9 @@ Notes:
 | `ALERT_DEFAULT_CPU_THRESHOLD` | | `85` | Default CPU threshold |
 | `ALERT_DEFAULT_RAM_THRESHOLD` | | `85` | Default RAM threshold |
 | `ALERT_DEFAULT_DISK_THRESHOLD` | | `90` | Default Disk threshold |
+| `CHAT_CONTEXT_MAX_TURNS` | | `8` | Max past user+assistant turns included in AI context |
+| `CHAT_CONTEXT_MAX_CHARS` | | `6000` | Max total chars for stored context window sent to AI |
+| `CHAT_CONTEXT_RETENTION_MESSAGES` | | `200` | Max persisted chat messages kept per chat |
 
 ## Deployment
 

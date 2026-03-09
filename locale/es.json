@@ -102,7 +102,12 @@
   "chat": {
     "thinking": "⏳ Pensando…",
     "error": "❌ Ha ocurrido un error al generar la respuesta. Por favor, inténtalo de nuevo.",
-    "provider_error": "❌ No se pudo generar una respuesta con {provider}. Revisa la API/servicio e inténtalo de nuevo."
+    "provider_error": "❌ No se pudo generar una respuesta con {provider}. Revisa la API/servicio e inténtalo de nuevo.",
+    "context_button_info": "ℹ️ Contexto",
+    "context_button_clear": "🧹 Limpiar",
+    "context_button_close": "❌ Cerrar",
+    "context_info": "ℹ️ Uso de contexto\nCaracteres usados: {used_chars}/{max_chars} ({used_pct}%)\nTokens estimados: {used_tokens}/{max_tokens}\nMensajes en ventana activa: {used_messages}/{max_messages}\nMensajes almacenados: {stored_messages}",
+    "context_cleared": "✅ Contexto limpiado."
   },
   "errors": {
     "unauthorized": "👋 ¡Hola! Este es un bot privado y solo está disponible para su propietario. Si crees que es un error, contacta con el administrador.",

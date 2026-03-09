@@ -20,6 +20,22 @@ _chat_client: httpx.AsyncClient | None = None
 _client_guard = asyncio.Lock()
 
 
+def _chat_messages(
+    system: str,
+    user_message: str,
+    history: list[dict[str, str]] | None,
+) -> list[dict[str, str]]:
+    messages: list[dict[str, str]] = [{"role": "system", "content": system}]
+    if history:
+        for item in history:
+            role = item.get("role", "")
+            content = item.get("content", "").strip()
+            if role in {"user", "assistant"} and content:
+                messages.append({"role": role, "content": content})
+    messages.append({"role": "user", "content": user_message})
+    return messages
+
+
 def _extract_model_names(data: object) -> list[str]:
     if not isinstance(data, dict):
         return []
@@ -46,7 +62,13 @@ async def list_models() -> list[str]:
     return _extract_model_names(resp.json())
 
 
-async def chat(model: str, system: str, user_message: str) -> str:
+async def chat(
+    model: str,
+    system: str,
+    user_message: str,
+    *,
+    history: list[dict[str, str]] | None = None,
+) -> str:
     """Send a chat request and return the assistant's reply text.
 
     Uses the /api/chat endpoint (non-streaming).
@@ -56,10 +78,7 @@ async def chat(model: str, system: str, user_message: str) -> str:
     payload = {
         "model": model,
         "stream": False,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user_message},
-        ],
+        "messages": _chat_messages(system, user_message, history),
     }
     client = await _get_chat_client()
     resp = await client.post(f"{base_url}/api/chat", json=payload)
@@ -77,7 +96,13 @@ async def chat(model: str, system: str, user_message: str) -> str:
     return content
 
 
-async def chat_stream(model: str, system: str, user_message: str) -> AsyncIterator[str]:
+async def chat_stream(
+    model: str,
+    system: str,
+    user_message: str,
+    *,
+    history: list[dict[str, str]] | None = None,
+) -> AsyncIterator[str]:
     """Send a streaming chat request and yield incremental text chunks.
 
     Uses /api/chat with stream=true and yields message.content fragments as they
@@ -87,10 +112,7 @@ async def chat_stream(model: str, system: str, user_message: str) -> AsyncIterat
     payload = {
         "model": model,
         "stream": True,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user_message},
-        ],
+        "messages": _chat_messages(system, user_message, history),
     }
 
     client = await _get_chat_client()

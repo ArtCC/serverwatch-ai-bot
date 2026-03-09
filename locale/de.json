@@ -102,7 +102,12 @@
   "chat": {
     "thinking": "⏳ Denke nach…",
     "error": "❌ Beim Erstellen der Antwort ist ein Fehler aufgetreten. Bitte versuche es erneut.",
-    "provider_error": "❌ Mit {provider} konnte keine Antwort generiert werden. Prüfe API-/Dienstverfügbarkeit und versuche es erneut."
+    "provider_error": "❌ Mit {provider} konnte keine Antwort generiert werden. Prüfe API-/Dienstverfügbarkeit und versuche es erneut.",
+    "context_button_info": "ℹ️ Kontext",
+    "context_button_clear": "🧹 Leeren",
+    "context_button_close": "❌ Schließen",
+    "context_info": "ℹ️ Kontextnutzung\nGenutzte Zeichen: {used_chars}/{max_chars} ({used_pct}%)\nGeschätzte Tokens: {used_tokens}/{max_tokens}\nNachrichten im aktiven Fenster: {used_messages}/{max_messages}\nGespeicherte Nachrichten: {stored_messages}",
+    "context_cleared": "✅ Kontext geleert."
   },
   "errors": {
     "unauthorized": "👋 Hallo! Dieser Bot ist privat und nur für den Eigentümer verfügbar. Wenn du glaubst, dass das ein Fehler ist, kontaktiere bitte den Administrator.",

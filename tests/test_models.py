@@ -56,6 +56,9 @@ def test_configured_cloud_options_only_returns_fully_configured_providers() -> N
         alert_default_cpu_threshold=85.0,
         alert_default_ram_threshold=85.0,
         alert_default_disk_threshold=90.0,
+        chat_context_max_turns=8,
+        chat_context_max_chars=6000,
+        chat_context_retention_messages=200,
         tz="UTC",
     )
 

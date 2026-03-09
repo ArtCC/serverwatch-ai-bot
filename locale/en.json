@@ -102,7 +102,12 @@
   "chat": {
     "thinking": "⏳ Thinking…",
     "error": "❌ Something went wrong while generating a response. Please try again.",
-    "provider_error": "❌ Could not generate a response with {provider}. Check API/service availability and try again."
+    "provider_error": "❌ Could not generate a response with {provider}. Check API/service availability and try again.",
+    "context_button_info": "ℹ️ Context",
+    "context_button_clear": "🧹 Clear",
+    "context_button_close": "❌ Close",
+    "context_info": "ℹ️ Context usage\nUsed chars: {used_chars}/{max_chars} ({used_pct}%)\nEstimated tokens: {used_tokens}/{max_tokens}\nMessages in active window: {used_messages}/{max_messages}\nStored messages: {stored_messages}",
+    "context_cleared": "✅ Context cleared."
   },
   "errors": {
     "unauthorized": "👋 Hi! This is a private bot and is only available to its owner. If you think this is a mistake, please contact the administrator.",

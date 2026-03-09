@@ -13,11 +13,18 @@ from __future__ import annotations
 
 import logging
 import time
+from typing import cast
 
-from telegram import Message, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Message, Update
 from telegram.constants import ChatAction, ParseMode
 from telegram.error import BadRequest, NetworkError, TimedOut
-from telegram.ext import Application, ContextTypes, MessageHandler, filters
+from telegram.ext import (
+    Application,
+    CallbackQueryHandler,
+    ContextTypes,
+    MessageHandler,
+    filters,
+)
 
 from app.core import store
 from app.core.auth import restricted
@@ -30,6 +37,9 @@ logger = logging.getLogger("serverwatch")
 _STREAM_EDIT_INTERVAL_SECONDS = 0.8
 _STREAM_TYPING_INTERVAL_SECONDS = 4.0
 _TELEGRAM_MAX_TEXT_LENGTH = 4096
+_CB_CONTEXT_INFO = "ctx_info"
+_CB_CONTEXT_CLEAR = "ctx_clear"
+_CB_CONTEXT_CLOSE = "ctx_close"
 
 _SYSTEM_WITH_METRICS = """\
 You are ServerWatch, a concise and helpful server monitoring assistant.
@@ -131,6 +141,53 @@ _GLANCES_HINTS = (
 )
 
 
+def _context_entry_keyboard(locale: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    t("chat.context_button_info", locale=locale),
+                    callback_data=_CB_CONTEXT_INFO,
+                )
+            ]
+        ]
+    )
+
+
+def _context_panel_keyboard(locale: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    t("chat.context_button_clear", locale=locale),
+                    callback_data=_CB_CONTEXT_CLEAR,
+                ),
+                InlineKeyboardButton(
+                    t("chat.context_button_close", locale=locale),
+                    callback_data=_CB_CONTEXT_CLOSE,
+                ),
+            ]
+        ]
+    )
+
+
+def _context_usage_text(locale: str, usage: store.ContextUsage) -> str:
+    max_chars = max(1, usage.max_chars)
+    percent = min(100, round((usage.used_chars / max_chars) * 100))
+    return t(
+        "chat.context_info",
+        locale=locale,
+        used_chars=usage.used_chars,
+        max_chars=usage.max_chars,
+        used_pct=percent,
+        used_tokens=usage.used_tokens_estimate,
+        max_tokens=usage.max_tokens_estimate,
+        used_messages=usage.used_messages,
+        max_messages=usage.max_messages,
+        stored_messages=usage.stored_messages,
+    )
+
+
 def _is_keyboard_button_text(text: str) -> bool:
     return any(text_matches_key(text, key) for key in _BUTTON_KEYS)
 
@@ -192,12 +249,17 @@ async def _safe_edit_or_reply(
     placeholder: Message | None,
     text: str,
     parse_mode: str | None = None,
+    reply_markup: InlineKeyboardMarkup | None = None,
     allow_fallback_reply: bool = True,
 ) -> bool:
     """Try editing placeholder first; fallback to a new reply on Telegram failures."""
     if placeholder is not None:
         try:
-            await placeholder.edit_text(text, parse_mode=parse_mode)
+            await placeholder.edit_text(
+                text,
+                parse_mode=parse_mode,
+                reply_markup=reply_markup,
+            )
             return True
         except BadRequest as exc:
             # Harmless in case of duplicate updates/races.
@@ -213,7 +275,11 @@ async def _safe_edit_or_reply(
         return False
 
     try:
-        await source_message.reply_text(text, parse_mode=parse_mode)
+        await source_message.reply_text(
+            text,
+            parse_mode=parse_mode,
+            reply_markup=reply_markup,
+        )
         return True
     except Exception:
         logger.exception("Fallback reply_text failed")
@@ -229,10 +295,14 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if _is_keyboard_button_text(message.text):
         return
 
-    locale = locale_from_update(update, fallback=get_config().bot_locale)
+    cfg = get_config()
+    locale = locale_from_update(update, fallback=cfg.bot_locale)
+    chat = update.effective_chat
+    if chat is None:
+        return
+    chat_id = chat.id
 
-    if update.effective_chat:
-        await update.effective_chat.send_action(ChatAction.TYPING)
+    await chat.send_action(ChatAction.TYPING)
 
     placeholder: Message | None = None
     try:
@@ -247,6 +317,11 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     # Fetch metrics (non-blocking failure)
     system_prompt: str
+    history = await store.get_chat_context_window(
+        chat_id,
+        max_turns=cfg.chat_context_max_turns,
+        max_chars=cfg.chat_context_max_chars,
+    )
     selection = await store.get_active_model()
     provider, _, _ = selection.partition(":")
 
@@ -290,7 +365,12 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     stream_push_enabled = True
 
     try:
-        async for chunk in llm_router.stream_chat(selection, system_prompt, message.text):
+        async for chunk in llm_router.stream_chat(
+            selection,
+            system_prompt,
+            message.text,
+            history=history,
+        ):
             if not chunk:
                 continue
 
@@ -303,8 +383,8 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             now = time.monotonic()
             candidate = _truncate_for_telegram(reply_accumulated)
 
-            if update.effective_chat and (now - last_typing_at) >= _STREAM_TYPING_INTERVAL_SECONDS:
-                await update.effective_chat.send_action(ChatAction.TYPING)
+            if (now - last_typing_at) >= _STREAM_TYPING_INTERVAL_SECONDS:
+                await chat.send_action(ChatAction.TYPING)
                 last_typing_at = now
 
             if (
@@ -340,7 +420,78 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     final_reply = _truncate_for_telegram(reply_accumulated)
 
     if final_reply != last_pushed or placeholder is None:
-        await _safe_edit_or_reply(source_message=message, placeholder=placeholder, text=final_reply)
+        await _safe_edit_or_reply(
+            source_message=message,
+            placeholder=placeholder,
+            text=final_reply,
+            reply_markup=_context_entry_keyboard(locale),
+        )
+
+    await store.append_chat_context_message(chat_id, "user", message.text)
+    await store.append_chat_context_message(chat_id, "assistant", final_reply)
+
+
+@restricted
+async def cb_context_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    if query is None:
+        return
+    await query.answer()
+
+    raw_message = query.message
+    if raw_message is None:
+        return
+    message = cast(Message, raw_message)
+
+    cfg = get_config()
+    locale = locale_from_update(update, fallback=cfg.bot_locale)
+    usage = await store.get_chat_context_usage(
+        message.chat_id,
+        max_turns=cfg.chat_context_max_turns,
+        max_chars=cfg.chat_context_max_chars,
+    )
+
+    await message.reply_text(
+        _context_usage_text(locale, usage),
+        reply_markup=_context_panel_keyboard(locale),
+    )
+
+
+@restricted
+async def cb_context_clear(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    if query is None:
+        return
+    await query.answer()
+
+    raw_message = query.message
+    if raw_message is None:
+        return
+    message = cast(Message, raw_message)
+
+    locale = locale_from_update(update, fallback=get_config().bot_locale)
+    await store.clear_chat_context(message.chat_id)
+    await query.edit_message_text(
+        t("chat.context_cleared", locale=locale),
+        reply_markup=_context_panel_keyboard(locale),
+    )
+
+
+@restricted
+async def cb_context_close(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    if query is None:
+        return
+    await query.answer()
+
+    raw_message = query.message
+    if raw_message is None:
+        return
+    message = cast(Message, raw_message)
+    try:
+        await message.delete()
+    except Exception:
+        logger.warning("Could not delete context panel message", exc_info=True)
 
 
 def register(app: Application) -> None:
@@ -350,3 +501,6 @@ def register(app: Application) -> None:
             chat_handler,
         )
     )
+    app.add_handler(CallbackQueryHandler(cb_context_info, pattern=f"^{_CB_CONTEXT_INFO}$"))
+    app.add_handler(CallbackQueryHandler(cb_context_clear, pattern=f"^{_CB_CONTEXT_CLEAR}$"))
+    app.add_handler(CallbackQueryHandler(cb_context_close, pattern=f"^{_CB_CONTEXT_CLOSE}$"))

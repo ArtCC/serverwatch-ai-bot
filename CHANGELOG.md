@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.5] - 2026-03-09
+
+### Added
+
+- Added persistent bounded chat context storage in SQLite (`chat_context`) with per-chat retention.
+- Added inline chat context controls in free-text replies: `ℹ️ Context`, `🧹 Clear`, and `❌ Close`.
+- Added context usage panel showing used characters vs configured budget, estimated tokens, active-window message count, and stored message count.
+- Added new configuration variables: `CHAT_CONTEXT_MAX_TURNS`, `CHAT_CONTEXT_MAX_CHARS`, and `CHAT_CONTEXT_RETENTION_MESSAGES`.
+- Added locale strings for context controls and context usage panel in `en`, `es`, `it`, `de`, and `fr`.
+
+### Changed
+
+- Free-text chat now includes bounded multi-turn history when sending requests to LLM providers (Ollama, OpenAI, Anthropic, DeepSeek).
+- Updated README to document bounded chat context behavior, context inline controls, and new environment variables.
+
 ## [0.0.4] - 2026-03-08
 
 ### Changed

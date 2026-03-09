@@ -52,6 +52,40 @@ class ModelOption:
     model: str
 
 
+ChatHistory = list[dict[str, str]]
+
+
+def _sanitize_history(history: ChatHistory | None) -> ChatHistory:
+    if not history:
+        return []
+
+    sanitized: ChatHistory = []
+    for item in history:
+        role = item.get("role", "")
+        content = item.get("content", "").strip()
+        if role not in {"user", "assistant"} or not content:
+            continue
+        sanitized.append({"role": role, "content": content})
+    return sanitized
+
+
+def _openai_like_messages(
+    system: str,
+    user_message: str,
+    history: ChatHistory | None,
+) -> list[dict[str, str]]:
+    messages = [{"role": "system", "content": system}]
+    messages.extend(_sanitize_history(history))
+    messages.append({"role": "user", "content": user_message})
+    return messages
+
+
+def _anthropic_messages(user_message: str, history: ChatHistory | None) -> list[dict[str, str]]:
+    messages = _sanitize_history(history)
+    messages.append({"role": "user", "content": user_message})
+    return messages
+
+
 def _is_bad_request(exc: httpx.HTTPStatusError) -> bool:
     response = exc.response
     return response is not None and response.status_code == 400
@@ -141,53 +175,70 @@ def is_cloud_selection_configured(selection: str, config: Config | None = None) 
     return False
 
 
-async def chat(selection: str, system: str, user_message: str) -> str:
+async def chat(
+    selection: str,
+    system: str,
+    user_message: str,
+    *,
+    history: ChatHistory | None = None,
+) -> str:
     provider, model = split_model_selection(selection)
 
     if provider == "ollama":
-        return await ollama.chat(model, system, user_message)
+        return await ollama.chat(model, system, user_message, history=history)
     if provider == "openai":
-        return await _chat_openai(model, system, user_message)
+        return await _chat_openai(model, system, user_message, history=history)
     if provider == "anthropic":
-        return await _chat_anthropic(model, system, user_message)
+        return await _chat_anthropic(model, system, user_message, history=history)
     if provider == "deepseek":
-        return await _chat_deepseek(model, system, user_message)
+        return await _chat_deepseek(model, system, user_message, history=history)
 
     raise ValueError(f"Unsupported provider: {provider}")
 
 
-async def stream_chat(selection: str, system: str, user_message: str) -> AsyncIterator[str]:
+async def stream_chat(
+    selection: str,
+    system: str,
+    user_message: str,
+    *,
+    history: ChatHistory | None = None,
+) -> AsyncIterator[str]:
     """Yield chat output chunks when provider supports streaming."""
     provider, model = split_model_selection(selection)
 
     if provider == "ollama":
         async for chunk in _stream_with_fallback(
-            stream_factory=lambda: ollama.chat_stream(model, system, user_message),
-            final_factory=lambda: ollama.chat(model, system, user_message),
+            stream_factory=lambda: ollama.chat_stream(
+                model,
+                system,
+                user_message,
+                history=history,
+            ),
+            final_factory=lambda: ollama.chat(model, system, user_message, history=history),
             provider="ollama",
         ):
             yield chunk
         return
     if provider == "openai":
         async for chunk in _stream_with_fallback(
-            stream_factory=lambda: _stream_openai(model, system, user_message),
-            final_factory=lambda: _chat_openai(model, system, user_message),
+            stream_factory=lambda: _stream_openai(model, system, user_message, history=history),
+            final_factory=lambda: _chat_openai(model, system, user_message, history=history),
             provider="openai",
         ):
             yield chunk
         return
     if provider == "anthropic":
         async for chunk in _stream_with_fallback(
-            stream_factory=lambda: _stream_anthropic(model, system, user_message),
-            final_factory=lambda: _chat_anthropic(model, system, user_message),
+            stream_factory=lambda: _stream_anthropic(model, system, user_message, history=history),
+            final_factory=lambda: _chat_anthropic(model, system, user_message, history=history),
             provider="anthropic",
         ):
             yield chunk
         return
     if provider == "deepseek":
         async for chunk in _stream_with_fallback(
-            stream_factory=lambda: _stream_deepseek(model, system, user_message),
-            final_factory=lambda: _chat_deepseek(model, system, user_message),
+            stream_factory=lambda: _stream_deepseek(model, system, user_message, history=history),
+            final_factory=lambda: _chat_deepseek(model, system, user_message, history=history),
             provider="deepseek",
         ):
             yield chunk
@@ -272,7 +323,13 @@ def _extract_openai_like_delta(data: dict[str, object]) -> str:
     return ""
 
 
-async def _stream_openai(model: str, system: str, user_message: str) -> AsyncIterator[str]:
+async def _stream_openai(
+    model: str,
+    system: str,
+    user_message: str,
+    *,
+    history: ChatHistory | None = None,
+) -> AsyncIterator[str]:
     cfg = get_config()
     if not cfg.openai_api_key:
         raise ValueError("OPENAI_API_KEY is missing")
@@ -284,10 +341,7 @@ async def _stream_openai(model: str, system: str, user_message: str) -> AsyncIte
     payload = {
         "model": model,
         "stream": True,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user_message},
-        ],
+        "messages": _openai_like_messages(system, user_message, history),
     }
 
     client = await _get_http_client()
@@ -299,7 +353,13 @@ async def _stream_openai(model: str, system: str, user_message: str) -> AsyncIte
                 yield chunk
 
 
-async def _stream_deepseek(model: str, system: str, user_message: str) -> AsyncIterator[str]:
+async def _stream_deepseek(
+    model: str,
+    system: str,
+    user_message: str,
+    *,
+    history: ChatHistory | None = None,
+) -> AsyncIterator[str]:
     cfg = get_config()
     if not cfg.deepseek_api_key:
         raise ValueError("DEEPSEEK_API_KEY is missing")
@@ -311,10 +371,7 @@ async def _stream_deepseek(model: str, system: str, user_message: str) -> AsyncI
     payload = {
         "model": model,
         "stream": True,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user_message},
-        ],
+        "messages": _openai_like_messages(system, user_message, history),
     }
 
     client = await _get_http_client()
@@ -326,7 +383,13 @@ async def _stream_deepseek(model: str, system: str, user_message: str) -> AsyncI
                 yield chunk
 
 
-async def _stream_anthropic(model: str, system: str, user_message: str) -> AsyncIterator[str]:
+async def _stream_anthropic(
+    model: str,
+    system: str,
+    user_message: str,
+    *,
+    history: ChatHistory | None = None,
+) -> AsyncIterator[str]:
     global _anthropic_web_search_supported
 
     cfg = get_config()
@@ -344,7 +407,7 @@ async def _stream_anthropic(model: str, system: str, user_message: str) -> Async
         "max_tokens": 512,
         "stream": True,
         "system": system,
-        "messages": [{"role": "user", "content": user_message}],
+        "messages": _anthropic_messages(user_message, history),
     }
 
     use_tool = _anthropic_web_search_supported is not False
@@ -390,7 +453,13 @@ async def _stream_anthropic_once(
                     yield text
 
 
-async def _chat_openai(model: str, system: str, user_message: str) -> str:
+async def _chat_openai(
+    model: str,
+    system: str,
+    user_message: str,
+    *,
+    history: ChatHistory | None = None,
+) -> str:
     cfg = get_config()
     if not cfg.openai_api_key:
         raise ValueError("OPENAI_API_KEY is missing")
@@ -401,17 +470,11 @@ async def _chat_openai(model: str, system: str, user_message: str) -> str:
     }
     chat_payload: dict[str, object] = {
         "model": model,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user_message},
-        ],
+        "messages": _openai_like_messages(system, user_message, history),
     }
     responses_payload: dict[str, object] = {
         "model": model,
-        "input": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user_message},
-        ],
+        "input": _openai_like_messages(system, user_message, history),
         "tools": [{"type": "web_search"}],
         "tool_choice": "auto",
     }
@@ -453,7 +516,13 @@ async def _chat_openai(model: str, system: str, user_message: str) -> str:
     return content
 
 
-async def _chat_deepseek(model: str, system: str, user_message: str) -> str:
+async def _chat_deepseek(
+    model: str,
+    system: str,
+    user_message: str,
+    *,
+    history: ChatHistory | None = None,
+) -> str:
     global _deepseek_web_search_notice_logged
 
     cfg = get_config()
@@ -466,10 +535,7 @@ async def _chat_deepseek(model: str, system: str, user_message: str) -> str:
     }
     payload: dict[str, object] = {
         "model": model,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user_message},
-        ],
+        "messages": _openai_like_messages(system, user_message, history),
     }
 
     if not _deepseek_web_search_notice_logged:
@@ -499,7 +565,13 @@ async def _chat_deepseek(model: str, system: str, user_message: str) -> str:
     return content
 
 
-async def _chat_anthropic(model: str, system: str, user_message: str) -> str:
+async def _chat_anthropic(
+    model: str,
+    system: str,
+    user_message: str,
+    *,
+    history: ChatHistory | None = None,
+) -> str:
     global _anthropic_web_search_supported
 
     cfg = get_config()
@@ -515,7 +587,7 @@ async def _chat_anthropic(model: str, system: str, user_message: str) -> str:
         "model": model,
         "max_tokens": 512,
         "system": system,
-        "messages": [{"role": "user", "content": user_message}],
+        "messages": _anthropic_messages(user_message, history),
     }
     fallback_payload: dict[str, object] | None = None
 
