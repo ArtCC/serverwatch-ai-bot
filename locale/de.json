@@ -22,7 +22,7 @@
     "text": "👤 *Autor*: ArtCC\n🔗 GitHub: https://github.com/ArtCC"
   },
   "help": {
-    "text": "ℹ️ *ServerWatch — Hilfe*\n\n*Befehle*\n/status — Aktuelle Servermetriken\n/alerts — Alarmgrenzwerte anzeigen und konfigurieren\n/glances — Live-Detailmenü pro Endpoint öffnen\n/models — Verfügbare Modelloptionen (Ollama + optionale Cloud-Anbieter)\n/help — Diese Nachricht anzeigen\n\n*So funktioniert es*\nStelle einfach eine Frage in natürlicher Sprache. Ich sammle Live-Metriken und antworte mit deinem aktiven Modell.\n\n*Beispielfragen*\n• Welcher Prozess nutzt die meiste CPU?\n• Wie viel freier Speicherplatz ist noch vorhanden?\n• Läuft der Server gerade stabil?"
+    "text": "ℹ️ *ServerWatch — Hilfe*\n\n*Befehle*\n/status — Aktuelle Servermetriken\n/alerts — Alarmgrenzwerte anzeigen und konfigurieren\n/glances — Live-Detailmenü pro Endpoint öffnen\n/models — Verfügbare Modelloptionen (Ollama + optionale Cloud-Anbieter)\n/context — Nutzung des Chat-Kontexts anzeigen\n/help — Diese Nachricht anzeigen\n\n*Kontext-Steuerung*\nIn freien KI-Chatantworten kannst du `ℹ️ Kontext` tippen, um die Nutzung zu sehen, und danach `🧹 Leeren` oder `❌ Schließen`.\n\n*So funktioniert es*\nStelle einfach eine Frage in natürlicher Sprache. Ich sammle Live-Metriken und antworte mit deinem aktiven Modell.\n\n*Beispielfragen*\n• Welcher Prozess nutzt die meiste CPU?\n• Wie viel freier Speicherplatz ist noch vorhanden?\n• Läuft der Server gerade stabil?"
   },
   "status": {
     "header": "📊 Serverstatus",

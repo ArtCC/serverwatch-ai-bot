@@ -22,7 +22,7 @@
     "text": "👤 *Author*: ArtCC\n🔗 GitHub: https://github.com/ArtCC"
   },
   "help": {
-    "text": "ℹ️ *ServerWatch — Help*\n\n*Commands*\n/status — Current server metrics\n/alerts — View and configure alert thresholds\n/glances — Open live endpoint details menu\n/models — Available model options (Ollama + optional cloud providers)\n/help — Show this message\n\n*How it works*\nJust type a question in natural language and I will gather live metrics and answer using your active model.\n\n*Example questions*\n• What process is using the most CPU?\n• How much free disk space is left?\n• Is the server doing OK right now?"
+    "text": "ℹ️ *ServerWatch — Help*\n\n*Commands*\n/status — Current server metrics\n/alerts — View and configure alert thresholds\n/glances — Open live endpoint details menu\n/models — Available model options (Ollama + optional cloud providers)\n/context — Show chat context usage\n/help — Show this message\n\n*Context controls*\nIn free-text AI replies you can tap `ℹ️ Context` to open usage details, then use `🧹 Clear` or `❌ Close`.\n\n*How it works*\nJust type a question in natural language and I will gather live metrics and answer using your active model.\n\n*Example questions*\n• What process is using the most CPU?\n• How much free disk space is left?\n• Is the server doing OK right now?"
   },
   "status": {
     "header": "📊 Server Status",

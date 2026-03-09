@@ -22,7 +22,7 @@
     "text": "👤 *Autor*: ArtCC\n🔗 GitHub: https://github.com/ArtCC"
   },
   "help": {
-    "text": "ℹ️ *ServerWatch — Ayuda*\n\n*Comandos*\n/status — Métricas actuales del servidor\n/alerts — Ver y configurar umbrales de alerta\n/glances — Abrir menu de detalles en vivo por endpoint\n/models — Opciones de modelo disponibles (Ollama + proveedores en la nube opcionales)\n/help — Mostrar este mensaje\n\n*Cómo funciona*\nEscribe una pregunta en lenguaje natural y recopilaré métricas en tiempo real para responderte usando tu modelo activo.\n\n*Ejemplos de preguntas*\n• ¿Qué proceso está consumiendo más CPU?\n• ¿Cuánto espacio libre queda en disco?\n• ¿El servidor está funcionando bien ahora mismo?"
+    "text": "ℹ️ *ServerWatch — Ayuda*\n\n*Comandos*\n/status — Métricas actuales del servidor\n/alerts — Ver y configurar umbrales de alerta\n/glances — Abrir menu de detalles en vivo por endpoint\n/models — Opciones de modelo disponibles (Ollama + proveedores en la nube opcionales)\n/context — Mostrar uso del contexto del chat\n/help — Mostrar este mensaje\n\n*Controles de contexto*\nEn las respuestas IA de chat libre puedes pulsar `ℹ️ Contexto` para ver el uso actual, y luego `🧹 Limpiar` o `❌ Cerrar`.\n\n*Cómo funciona*\nEscribe una pregunta en lenguaje natural y recopilaré métricas en tiempo real para responderte usando tu modelo activo.\n\n*Ejemplos de preguntas*\n• ¿Qué proceso está consumiendo más CPU?\n• ¿Cuánto espacio libre queda en disco?\n• ¿El servidor está funcionando bien ahora mismo?"
   },
   "status": {
     "header": "📊 Estado del servidor",
