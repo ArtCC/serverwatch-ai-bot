@@ -27,6 +27,9 @@ class Config:
     alert_default_cpu_threshold: float
     alert_default_ram_threshold: float
     alert_default_disk_threshold: float
+    alert_consecutive_breaches: int
+    alert_recovery_margin_percent: float
+    alert_context_window_samples: int
     chat_context_max_turns: int
     chat_context_max_chars: int
     chat_context_retention_messages: int
@@ -66,6 +69,9 @@ class Config:
             alert_default_cpu_threshold=float(os.getenv("ALERT_DEFAULT_CPU_THRESHOLD", "85")),
             alert_default_ram_threshold=float(os.getenv("ALERT_DEFAULT_RAM_THRESHOLD", "85")),
             alert_default_disk_threshold=float(os.getenv("ALERT_DEFAULT_DISK_THRESHOLD", "90")),
+            alert_consecutive_breaches=int(os.getenv("ALERT_CONSECUTIVE_BREACHES", "2")),
+            alert_recovery_margin_percent=float(os.getenv("ALERT_RECOVERY_MARGIN_PERCENT", "5")),
+            alert_context_window_samples=int(os.getenv("ALERT_CONTEXT_WINDOW_SAMPLES", "3")),
             chat_context_max_turns=int(os.getenv("CHAT_CONTEXT_MAX_TURNS", "8")),
             chat_context_max_chars=int(os.getenv("CHAT_CONTEXT_MAX_CHARS", "6000")),
             chat_context_retention_messages=int(

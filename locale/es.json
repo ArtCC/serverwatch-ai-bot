@@ -131,6 +131,7 @@
   "alerts_notification": {
     "cpu": "⚠️ *Alerta de CPU*: uso al *{value}%* (umbral: {threshold}%)",
     "ram": "⚠️ *Alerta de RAM*: uso al *{value}%* (umbral: {threshold}%)",
-    "disk": "⚠️ *Alerta de disco*: uso al *{value}%* (umbral: {threshold}%)"
+    "disk": "⚠️ *Alerta de disco*: uso al *{value}%* (umbral: {threshold}%)",
+    "context": "ℹ️ Media ({samples}): *{avg}%* | Sostenido: *{sustained}s*"
   }
 }

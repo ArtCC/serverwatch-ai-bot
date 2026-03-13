@@ -131,6 +131,7 @@
   "alerts_notification": {
     "cpu": "⚠️ *CPU-Alarm*: Auslastung bei *{value}%* (Schwellenwert: {threshold}%)",
     "ram": "⚠️ *RAM-Alarm*: Auslastung bei *{value}%* (Schwellenwert: {threshold}%)",
-    "disk": "⚠️ *Datenträger-Alarm*: Auslastung bei *{value}%* (Schwellenwert: {threshold}%)"
+    "disk": "⚠️ *Datenträger-Alarm*: Auslastung bei *{value}%* (Schwellenwert: {threshold}%)",
+    "context": "ℹ️ Mittelwert ({samples}): *{avg}%* | Anhaltend: *{sustained}s*"
   }
 }

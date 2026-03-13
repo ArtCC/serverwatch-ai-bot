@@ -166,6 +166,9 @@ Notes:
 | `ALERT_DEFAULT_CPU_THRESHOLD` | | `85` | Default CPU threshold |
 | `ALERT_DEFAULT_RAM_THRESHOLD` | | `85` | Default RAM threshold |
 | `ALERT_DEFAULT_DISK_THRESHOLD` | | `90` | Default Disk threshold |
+| `ALERT_CONSECUTIVE_BREACHES` | | `2` | Consecutive checks required before firing metric alerts |
+| `ALERT_RECOVERY_MARGIN_PERCENT` | | `5` | Hysteresis margin (threshold - margin) required to reset alert state |
+| `ALERT_CONTEXT_WINDOW_SAMPLES` | | `3` | Number of recent samples used for alert context average |
 | `CHAT_CONTEXT_MAX_TURNS` | | `8` | Max past user+assistant turns included in AI context |
 | `CHAT_CONTEXT_MAX_CHARS` | | `6000` | Max total chars for stored context window sent to AI |
 | `CHAT_CONTEXT_RETENTION_MESSAGES` | | `200` | Max persisted chat messages kept per chat |

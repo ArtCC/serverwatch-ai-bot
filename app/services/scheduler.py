@@ -24,6 +24,8 @@ logger = logging.getLogger("serverwatch")
 
 # context.bot_data keys
 _BD_LAST_ALERT: str = "alert_last_sent"  # dict[str, float] metric -> epoch
+_BD_METRIC_STATE: str = "alert_metric_state"  # dict[str, dict[str, float | int | bool]]
+_BD_METRIC_SAMPLES: str = "alert_metric_samples"  # dict[str, list[float]]
 
 
 def _last_alerts(context: ContextTypes.DEFAULT_TYPE) -> dict[str, float]:
@@ -34,12 +36,73 @@ def _last_alerts(context: ContextTypes.DEFAULT_TYPE) -> dict[str, float]:
     return data
 
 
+def _metric_states(context: ContextTypes.DEFAULT_TYPE) -> dict[str, dict[str, object]]:
+    data = context.bot_data.setdefault(_BD_METRIC_STATE, {})
+    if not isinstance(data, dict):
+        context.bot_data[_BD_METRIC_STATE] = {}
+        return context.bot_data[_BD_METRIC_STATE]
+    return data
+
+
+def _metric_samples(context: ContextTypes.DEFAULT_TYPE) -> dict[str, list[float]]:
+    data = context.bot_data.setdefault(_BD_METRIC_SAMPLES, {})
+    if not isinstance(data, dict):
+        context.bot_data[_BD_METRIC_SAMPLES] = {}
+        return context.bot_data[_BD_METRIC_SAMPLES]
+    return data
+
+
+def _state_for_metric(states: dict[str, dict[str, object]], metric: str) -> dict[str, object]:
+    current = states.get(metric)
+    if not isinstance(current, dict):
+        current = {"breaches": 0, "active": False, "first_breach": 0.0}
+        states[metric] = current
+
+    breaches = current.get("breaches", 0)
+    active = current.get("active", False)
+    first_breach = current.get("first_breach", 0.0)
+
+    current["breaches"] = int(breaches) if isinstance(breaches, (int, float)) else 0
+    current["active"] = bool(active)
+    current["first_breach"] = float(first_breach) if isinstance(first_breach, (int, float)) else 0.0
+    return current
+
+
+def _append_sample(
+    samples: dict[str, list[float]], metric: str, value: float, window_size: int
+) -> list[float]:
+    values = samples.get(metric)
+    if not isinstance(values, list):
+        values = []
+    values.append(value)
+    keep = max(1, window_size)
+    if len(values) > keep:
+        values = values[-keep:]
+    samples[metric] = values
+    return values
+
+
+def _state_breaches(state: dict[str, object]) -> int:
+    raw = state.get("breaches", 0)
+    return int(raw) if isinstance(raw, (int, float)) else 0
+
+
+def _state_first_breach(state: dict[str, object]) -> float:
+    raw = state.get("first_breach", 0.0)
+    return float(raw) if isinstance(raw, (int, float)) else 0.0
+
+
 async def check_and_alert(context: ContextTypes.DEFAULT_TYPE) -> None:
     """Fetch metrics and fire alerts for any metric above its threshold."""
     cfg = get_config()
     cooldown = cfg.alert_cooldown_seconds
+    required_breaches = max(1, cfg.alert_consecutive_breaches)
+    recovery_margin = max(0.0, cfg.alert_recovery_margin_percent)
+    context_window = max(1, cfg.alert_context_window_samples)
     now = time.monotonic()
     last = _last_alerts(context)
+    states = _metric_states(context)
+    samples = _metric_samples(context)
 
     try:
         snapshot = await glances.get_snapshot()
@@ -57,13 +120,43 @@ async def check_and_alert(context: ContextTypes.DEFAULT_TYPE) -> None:
     locale = cfg.bot_locale
 
     for metric, (value, threshold) in thresholds.items():
-        if value < threshold:
-            # Metric back below threshold — reset cooldown so next breach triggers immediately.
+        recent_values = _append_sample(samples, metric, value, context_window)
+        state = _state_for_metric(states, metric)
+
+        recovery_threshold = max(0.0, threshold - recovery_margin)
+        if value < recovery_threshold:
+            # Recovery uses hysteresis to avoid flapping near the threshold.
             last.pop(metric, None)
+            state["breaches"] = 0
+            state["active"] = False
+            state["first_breach"] = 0.0
             continue
 
+        if value < threshold:
+            # Keep state in the hysteresis band to avoid noisy transitions.
+            continue
+
+        breaches = _state_breaches(state) + 1
+        state["breaches"] = breaches
+        if breaches == 1:
+            state["first_breach"] = now
+
+        if breaches < required_breaches:
+            logger.debug(
+                "Alert candidate for %s (value=%.1f%% threshold=%.1f%% breach=%d/%d)",
+                metric,
+                value,
+                threshold,
+                breaches,
+                required_breaches,
+            )
+            continue
+
+        state["active"] = True
+
         last_sent = last.get(metric, 0.0)
-        if now - last_sent < cooldown:
+        has_last_sent = metric in last
+        if has_last_sent and now - last_sent < cooldown:
             logger.debug(
                 "Alert suppressed for %s (value=%.1f%% threshold=%.1f%% cooldown remaining=%.0fs)",
                 metric,
@@ -74,12 +167,22 @@ async def check_and_alert(context: ContextTypes.DEFAULT_TYPE) -> None:
             continue
 
         last[metric] = now
-        text = t(
+        sustained_seconds = max(0.0, now - _state_first_breach(state))
+        avg_value = sum(recent_values) / len(recent_values)
+        headline = t(
             f"alerts_notification.{metric}",
             locale=locale,
             value=round(value, 1),
             threshold=round(threshold, 1),
         )
+        context_line = t(
+            "alerts_notification.context",
+            locale=locale,
+            avg=round(avg_value, 1),
+            samples=len(recent_values),
+            sustained=max(1, int(sustained_seconds)),
+        )
+        text = f"{headline}\n{context_line}"
         logger.info("Sending alert: %s=%.1f%% (threshold=%.1f%%)", metric, value, threshold)
         try:
             await context.bot.send_message(
@@ -101,7 +204,8 @@ async def check_and_alert(context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     health_last_sent = last.get(health_metric, 0.0)
-    if now - health_last_sent < cooldown:
+    has_health_last_sent = health_metric in last
+    if has_health_last_sent and now - health_last_sent < cooldown:
         logger.debug(
             "Health alert suppressed (level=%s score=%d cooldown remaining=%.0fs)",
             snapshot.health_level,
