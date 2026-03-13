@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.6] - 2026-03-13
+
+### Added
+
+- Added anti-noise controls for metric alerts with three new configuration variables:
+	- `ALERT_CONSECUTIVE_BREACHES` (required consecutive breaches before firing),
+	- `ALERT_RECOVERY_MARGIN_PERCENT` (hysteresis recovery band),
+	- `ALERT_CONTEXT_WINDOW_SAMPLES` (rolling sample window for alert context).
+- Added contextual alert details in metric notifications (rolling average and sustained duration).
+- Added locale key `alerts_notification.context` in `en`, `es`, `de`, `fr`, and `it`.
+- Added explicit streaming event channels (`thinking` and `answer`) in LLM routing to support richer Telegram progressive updates.
+- Added Ollama streaming event support to surface model reasoning/thinking blocks when available.
+- Added scheduler tests for alert stability behavior:
+	- consecutive-breach triggering,
+	- hysteresis anti-flapping,
+	- re-trigger after full recovery,
+	- contextual alert line rendering.
+
+### Changed
+
+- Refined scheduler alert state machine to reduce false positives and threshold flapping:
+	- per-metric breach counters and rolling samples are tracked in bot runtime state,
+	- recovery now requires dropping below `threshold - margin` before resetting alert state,
+	- cooldown is now enforced only after at least one alert has actually been sent for a metric.
+- Updated free-text chat UX: the initial `⏳ Thinking…` placeholder is now progressively edited with streamed model thinking blocks (when provided by the model/provider), then replaced by streamed final answer content.
+- Updated `docker-compose.yml` and `.env.example` to include new alert scheduler variables with defaults aligned to runtime config.
+- Updated README environment variable table with the new alert scheduler controls.
+
 ## [0.0.5] - 2026-03-09
 
 ### Added
