@@ -244,6 +244,14 @@ def _truncate_for_telegram(text: str) -> str:
     return text[: _TELEGRAM_MAX_TEXT_LENGTH - 1] + "…"
 
 
+def _thinking_preview_text(locale: str, thinking_text: str) -> str:
+    base = t("chat.thinking", locale=locale)
+    if not thinking_text.strip():
+        return base
+    # Keep the waiting state visible while appending streamed reasoning blocks.
+    return _truncate_for_telegram(f"{base}\n\n{thinking_text}")
+
+
 async def _safe_edit_or_reply(
     *,
     source_message: Message,
@@ -359,6 +367,7 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             system_prompt = _SYSTEM_NO_METRICS.format(locale=locale)
 
     # Query LLM (streaming when supported by provider)
+    thinking_accumulated = ""
     reply_accumulated = ""
     last_pushed = ""
     last_edit_at = 0.0
@@ -366,23 +375,29 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     stream_push_enabled = True
 
     try:
-        async for chunk in llm_router.stream_chat(
+        async for event in llm_router.stream_chat_events(
             selection,
             system_prompt,
             message.text,
             history=history,
         ):
-            if not chunk:
+            if not event.text:
                 continue
 
-            reply_accumulated += chunk
+            if event.channel == "thinking":
+                thinking_accumulated += event.text
+            else:
+                reply_accumulated += event.text
 
             # Without a placeholder we avoid sending many partial replies.
             if placeholder is None:
                 continue
 
             now = time.monotonic()
-            candidate = _truncate_for_telegram(reply_accumulated)
+            if reply_accumulated:
+                candidate = _truncate_for_telegram(reply_accumulated)
+            else:
+                candidate = _thinking_preview_text(locale, thinking_accumulated)
 
             if (now - last_typing_at) >= _STREAM_TYPING_INTERVAL_SECONDS:
                 await chat.send_action(ChatAction.TYPING)

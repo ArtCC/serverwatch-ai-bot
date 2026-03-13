@@ -52,6 +52,12 @@ class ModelOption:
     model: str
 
 
+@dataclass(frozen=True)
+class StreamChunk:
+    channel: str
+    text: str
+
+
 ChatHistory = list[dict[str, str]]
 
 
@@ -204,11 +210,34 @@ async def stream_chat(
     history: ChatHistory | None = None,
 ) -> AsyncIterator[str]:
     """Yield chat output chunks when provider supports streaming."""
+    async for chunk in stream_chat_events(
+        selection,
+        system,
+        user_message,
+        history=history,
+    ):
+        if chunk.channel == "answer":
+            yield chunk.text
+
+
+async def stream_chat_events(
+    selection: str,
+    system: str,
+    user_message: str,
+    *,
+    history: ChatHistory | None = None,
+) -> AsyncIterator[StreamChunk]:
+    """Yield streaming chunks with explicit channel metadata.
+
+    Returned channels are:
+      - "thinking": intermediate model reasoning blocks (if provider exposes them)
+      - "answer": final response text stream
+    """
     provider, model = split_model_selection(selection)
 
     if provider == "ollama":
-        async for chunk in _stream_with_fallback(
-            stream_factory=lambda: ollama.chat_stream(
+        async for chunk in _stream_with_fallback_events(
+            stream_factory=lambda: _stream_ollama_events(
                 model,
                 system,
                 user_message,
@@ -220,24 +249,39 @@ async def stream_chat(
             yield chunk
         return
     if provider == "openai":
-        async for chunk in _stream_with_fallback(
-            stream_factory=lambda: _stream_openai(model, system, user_message, history=history),
+        async for chunk in _stream_with_fallback_events(
+            stream_factory=lambda: _stream_openai_events(
+                model,
+                system,
+                user_message,
+                history=history,
+            ),
             final_factory=lambda: _chat_openai(model, system, user_message, history=history),
             provider="openai",
         ):
             yield chunk
         return
     if provider == "anthropic":
-        async for chunk in _stream_with_fallback(
-            stream_factory=lambda: _stream_anthropic(model, system, user_message, history=history),
+        async for chunk in _stream_with_fallback_events(
+            stream_factory=lambda: _stream_anthropic_events(
+                model,
+                system,
+                user_message,
+                history=history,
+            ),
             final_factory=lambda: _chat_anthropic(model, system, user_message, history=history),
             provider="anthropic",
         ):
             yield chunk
         return
     if provider == "deepseek":
-        async for chunk in _stream_with_fallback(
-            stream_factory=lambda: _stream_deepseek(model, system, user_message, history=history),
+        async for chunk in _stream_with_fallback_events(
+            stream_factory=lambda: _stream_deepseek_events(
+                model,
+                system,
+                user_message,
+                history=history,
+            ),
             final_factory=lambda: _chat_deepseek(model, system, user_message, history=history),
             provider="deepseek",
         ):
@@ -272,6 +316,33 @@ async def _stream_with_fallback(
     full = await final_factory()
     if isinstance(full, str) and full:
         yield full
+
+
+async def _stream_with_fallback_events(
+    *,
+    stream_factory: Callable[[], AsyncIterator[StreamChunk]],
+    final_factory: Callable[[], Awaitable[str]],
+    provider: str,
+) -> AsyncIterator[StreamChunk]:
+    """Try structured streaming first and fallback to a full answer chunk."""
+    emitted_any = False
+    try:
+        async for chunk in stream_factory():
+            emitted_any = True
+            yield chunk
+    except Exception:
+        if emitted_any:
+            raise
+        logger.warning(
+            "%s streaming failed before first chunk. Falling back to non-stream.", provider
+        )
+
+    if emitted_any:
+        return
+
+    full = await final_factory()
+    if isinstance(full, str) and full:
+        yield StreamChunk(channel="answer", text=full)
 
 
 async def _iter_sse_json(response: httpx.Response) -> AsyncIterator[dict[str, object]]:
@@ -323,13 +394,76 @@ def _extract_openai_like_delta(data: dict[str, object]) -> str:
     return ""
 
 
-async def _stream_openai(
+def _extract_openai_like_reasoning_delta(data: dict[str, object]) -> str:
+    choices = data.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return ""
+
+    first = choices[0]
+    if not isinstance(first, dict):
+        return ""
+
+    delta = first.get("delta")
+    if not isinstance(delta, dict):
+        return ""
+
+    reasoning_content = delta.get("reasoning_content")
+    if isinstance(reasoning_content, str) and reasoning_content:
+        return reasoning_content
+
+    thinking = delta.get("thinking")
+    if isinstance(thinking, str) and thinking:
+        return thinking
+
+    reasoning = delta.get("reasoning")
+    if isinstance(reasoning, str) and reasoning:
+        return reasoning
+    if isinstance(reasoning, dict):
+        text = reasoning.get("text")
+        if isinstance(text, str) and text:
+            return text
+
+        content = reasoning.get("content")
+        if isinstance(content, str) and content:
+            return content
+        if isinstance(content, list):
+            parts: list[str] = []
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                block_text = block.get("text")
+                if isinstance(block_text, str) and block_text:
+                    parts.append(block_text)
+            return "".join(parts)
+
+    return ""
+
+
+async def _stream_ollama_events(
     model: str,
     system: str,
     user_message: str,
     *,
     history: ChatHistory | None = None,
-) -> AsyncIterator[str]:
+) -> AsyncIterator[StreamChunk]:
+    async for channel, chunk in ollama.chat_stream_events(
+        model,
+        system,
+        user_message,
+        history=history,
+    ):
+        if not chunk:
+            continue
+        yield StreamChunk(channel=channel, text=chunk)
+
+
+async def _stream_openai_events(
+    model: str,
+    system: str,
+    user_message: str,
+    *,
+    history: ChatHistory | None = None,
+) -> AsyncIterator[StreamChunk]:
     cfg = get_config()
     if not cfg.openai_api_key:
         raise ValueError("OPENAI_API_KEY is missing")
@@ -348,18 +482,21 @@ async def _stream_openai(
     async with client.stream("POST", _OPENAI_URL, headers=headers, json=payload) as resp:
         resp.raise_for_status()
         async for data in _iter_sse_json(resp):
+            thinking_chunk = _extract_openai_like_reasoning_delta(data)
+            if thinking_chunk:
+                yield StreamChunk(channel="thinking", text=thinking_chunk)
             chunk = _extract_openai_like_delta(data)
             if chunk:
-                yield chunk
+                yield StreamChunk(channel="answer", text=chunk)
 
 
-async def _stream_deepseek(
+async def _stream_deepseek_events(
     model: str,
     system: str,
     user_message: str,
     *,
     history: ChatHistory | None = None,
-) -> AsyncIterator[str]:
+) -> AsyncIterator[StreamChunk]:
     cfg = get_config()
     if not cfg.deepseek_api_key:
         raise ValueError("DEEPSEEK_API_KEY is missing")
@@ -378,18 +515,21 @@ async def _stream_deepseek(
     async with client.stream("POST", _DEEPSEEK_URL, headers=headers, json=payload) as resp:
         resp.raise_for_status()
         async for data in _iter_sse_json(resp):
+            thinking_chunk = _extract_openai_like_reasoning_delta(data)
+            if thinking_chunk:
+                yield StreamChunk(channel="thinking", text=thinking_chunk)
             chunk = _extract_openai_like_delta(data)
             if chunk:
-                yield chunk
+                yield StreamChunk(channel="answer", text=chunk)
 
 
-async def _stream_anthropic(
+async def _stream_anthropic_events(
     model: str,
     system: str,
     user_message: str,
     *,
     history: ChatHistory | None = None,
-) -> AsyncIterator[str]:
+) -> AsyncIterator[StreamChunk]:
     global _anthropic_web_search_supported
 
     cfg = get_config()
@@ -416,7 +556,7 @@ async def _stream_anthropic(
         payload["tools"] = [_anthropic_web_search_tool(model)]
 
     try:
-        async for chunk in _stream_anthropic_once(headers=headers, payload=payload):
+        async for chunk in _stream_anthropic_once_events(headers=headers, payload=payload):
             yield chunk
         if use_tool and _anthropic_web_search_supported is None:
             _anthropic_web_search_supported = True
@@ -430,13 +570,13 @@ async def _stream_anthropic(
             "Retrying without web search."
         )
 
-    async for chunk in _stream_anthropic_once(headers=headers, payload=base_payload):
+    async for chunk in _stream_anthropic_once_events(headers=headers, payload=base_payload):
         yield chunk
 
 
-async def _stream_anthropic_once(
+async def _stream_anthropic_once_events(
     *, headers: dict[str, str], payload: dict[str, object]
-) -> AsyncIterator[str]:
+) -> AsyncIterator[StreamChunk]:
     client = await _get_http_client()
     async with client.stream("POST", _ANTHROPIC_URL, headers=headers, json=payload) as resp:
         resp.raise_for_status()
@@ -446,11 +586,15 @@ async def _stream_anthropic_once(
                 delta = data.get("delta")
                 if not isinstance(delta, dict):
                     continue
-                if delta.get("type") != "text_delta":
-                    continue
-                text = delta.get("text")
-                if isinstance(text, str) and text:
-                    yield text
+                delta_type = delta.get("type")
+                if delta_type == "text_delta":
+                    text = delta.get("text")
+                    if isinstance(text, str) and text:
+                        yield StreamChunk(channel="answer", text=text)
+                elif delta_type == "thinking_delta":
+                    thinking = delta.get("thinking")
+                    if isinstance(thinking, str) and thinking:
+                        yield StreamChunk(channel="thinking", text=thinking)
 
 
 async def _chat_openai(

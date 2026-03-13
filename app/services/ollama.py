@@ -105,8 +105,34 @@ async def chat_stream(
 ) -> AsyncIterator[str]:
     """Send a streaming chat request and yield incremental text chunks.
 
-    Uses /api/chat with stream=true and yields message.content fragments as they
+    Uses /api/chat with stream=true and yields assistant text fragments as they
     arrive. Raises httpx.HTTPError on connectivity / HTTP errors.
+    """
+    async for channel, chunk in chat_stream_events(
+        model,
+        system,
+        user_message,
+        history=history,
+    ):
+        if channel == "answer":
+            yield chunk
+
+
+async def chat_stream_events(
+    model: str,
+    system: str,
+    user_message: str,
+    *,
+    history: list[dict[str, str]] | None = None,
+) -> AsyncIterator[tuple[str, str]]:
+    """Send a streaming chat request and yield (channel, chunk) tuples.
+
+    Channel values:
+      - "thinking": model reasoning/thinking fragments when exposed by Ollama.
+      - "answer": assistant response text fragments.
+
+    Uses /api/chat with stream=true and raises httpx.HTTPError on connectivity
+    / HTTP errors.
     """
     base_url = get_config().ollama_base_url.rstrip("/")
     payload = {
@@ -133,11 +159,19 @@ async def chat_stream(
             if not isinstance(data, dict):
                 continue
 
+            thinking = data.get("thinking")
+            if isinstance(thinking, str) and thinking:
+                yield "thinking", thinking
+
             message = data.get("message")
             if isinstance(message, dict):
+                model_thinking = message.get("thinking")
+                if isinstance(model_thinking, str) and model_thinking:
+                    yield "thinking", model_thinking
+
                 content = message.get("content")
                 if isinstance(content, str) and content:
-                    yield content
+                    yield "answer", content
 
 
 async def _get_list_client() -> httpx.AsyncClient:
