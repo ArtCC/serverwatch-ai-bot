@@ -15,6 +15,7 @@ import asyncio
 import logging
 import time
 import uuid
+from collections.abc import AsyncIterator
 from typing import cast
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Message, Update
@@ -204,6 +205,12 @@ def _parse_cancel_token(data: str) -> str | None:
     if not token or len(token) > 48:
         return None
     return token
+
+
+async def _next_stream_chunk(
+    stream_iter: AsyncIterator[llm_router.StreamChunk],
+) -> llm_router.StreamChunk:
+    return await anext(stream_iter)
 
 
 def _context_usage_text(locale: str, usage: store.ContextUsage) -> str:
@@ -421,60 +428,92 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     stream_keyboard = _chat_cancel_keyboard(locale, cancel_token) if cancel_token else None
 
     try:
-        try:
-            async for event in llm_router.stream_chat_events(
-                selection,
-                system_prompt,
-                message.text,
-                history=history,
+        stream_iter = llm_router.stream_chat_events(
+            selection,
+            system_prompt,
+            message.text,
+            history=history,
+        )
+        while True:
+            next_chunk_task: asyncio.Task[llm_router.StreamChunk] = asyncio.create_task(
+                _next_stream_chunk(stream_iter)
+            )
+            cancel_wait_task: asyncio.Task[bool] | None = None
+            wait_tasks: list[asyncio.Task[object]] = [cast(asyncio.Task[object], next_chunk_task)]
+            if cancel_event is not None:
+                cancel_wait_task = asyncio.create_task(cancel_event.wait())
+                wait_tasks.append(cast(asyncio.Task[object], cancel_wait_task))
+
+            done, pending = await asyncio.wait(
+                set(wait_tasks),
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            if (
+                cancel_wait_task is not None
+                and cancel_wait_task in done
+                and cancel_event is not None
+                and cancel_event.is_set()
             ):
-                if cancel_event is not None and cancel_event.is_set():
-                    cancelled_by_user = True
-                    break
+                cancelled_by_user = True
+                next_chunk_task.cancel()
+                await asyncio.gather(next_chunk_task, return_exceptions=True)
+                break
 
-                if not event.text:
-                    continue
+            if cancel_wait_task is not None:
+                cancel_wait_task.cancel()
+                await asyncio.gather(cancel_wait_task, return_exceptions=True)
 
-                if event.channel == "thinking":
-                    thinking_accumulated += event.text
+            for pending_task in pending:
+                pending_task.cancel()
+            if pending:
+                await asyncio.gather(*pending, return_exceptions=True)
+
+            try:
+                event = await next_chunk_task
+            except StopAsyncIteration:
+                break
+
+            if not event.text:
+                continue
+
+            if event.channel == "thinking":
+                thinking_accumulated += event.text
+            else:
+                reply_accumulated += event.text
+
+            # Without a placeholder we avoid sending many partial replies.
+            if placeholder is None:
+                continue
+
+            now = time.monotonic()
+            if reply_accumulated:
+                candidate = _truncate_for_telegram(reply_accumulated)
+            else:
+                candidate = _thinking_preview_text(locale, thinking_accumulated)
+
+            if (now - last_typing_at) >= _STREAM_TYPING_INTERVAL_SECONDS:
+                await chat.send_action(ChatAction.TYPING)
+                last_typing_at = now
+
+            if (
+                stream_push_enabled
+                and candidate != last_pushed
+                and (now - last_edit_at) >= _STREAM_EDIT_INTERVAL_SECONDS
+            ):
+                pushed = await _safe_edit_or_reply(
+                    source_message=message,
+                    placeholder=placeholder,
+                    text=candidate,
+                    reply_markup=stream_keyboard,
+                    allow_fallback_reply=False,
+                )
+                if pushed:
+                    last_pushed = candidate
+                    last_edit_at = now
                 else:
-                    reply_accumulated += event.text
-
-                # Without a placeholder we avoid sending many partial replies.
-                if placeholder is None:
-                    continue
-
-                now = time.monotonic()
-                if reply_accumulated:
-                    candidate = _truncate_for_telegram(reply_accumulated)
-                else:
-                    candidate = _thinking_preview_text(locale, thinking_accumulated)
-
-                if (now - last_typing_at) >= _STREAM_TYPING_INTERVAL_SECONDS:
-                    await chat.send_action(ChatAction.TYPING)
-                    last_typing_at = now
-
-                if (
-                    stream_push_enabled
-                    and candidate != last_pushed
-                    and (now - last_edit_at) >= _STREAM_EDIT_INTERVAL_SECONDS
-                ):
-                    pushed = await _safe_edit_or_reply(
-                        source_message=message,
-                        placeholder=placeholder,
-                        text=candidate,
-                        reply_markup=stream_keyboard,
-                        allow_fallback_reply=False,
-                    )
-                    if pushed:
-                        last_pushed = candidate
-                        last_edit_at = now
-                    else:
-                        # Avoid repeated partial fallback replies if placeholder edits keep failing.
-                        stream_push_enabled = False
-        finally:
-            if cancel_token is not None:
-                _chat_cancel_events(context).pop(cancel_token, None)
+                    # Avoid repeated partial fallback replies if placeholder edits keep failing.
+                    stream_push_enabled = False
 
         if cancelled_by_user:
             await _safe_edit_or_reply(
@@ -492,6 +531,9 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             parse_mode=ParseMode.MARKDOWN,
         )
         return
+    finally:
+        if cancel_token is not None:
+            _chat_cancel_events(context).pop(cancel_token, None)
 
     if not reply_accumulated.strip():
         reply_accumulated = t("chat.error", locale=locale)
