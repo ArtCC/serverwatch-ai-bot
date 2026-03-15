@@ -8,9 +8,8 @@ Flow:
 from __future__ import annotations
 
 import logging
-from typing import cast
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Message, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatAction
 from telegram.error import BadRequest
 from telegram.ext import (
@@ -104,13 +103,7 @@ async def cb_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if update.effective_chat:
         await update.effective_chat.send_action(ChatAction.TYPING)
 
-    if query.message is not None:
-        try:
-            await cast(Message, query.message).delete()
-        except Exception:
-            logger.warning("Could not delete previous status message on refresh", exc_info=True)
-
-    await _render(update, edit=False)
+    await _render(update, edit=True)
 
 
 def register(app: Application) -> None:

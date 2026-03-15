@@ -52,14 +52,6 @@ _UD_CHOICES = "mdl_choices"
 _UD_DELETE_CHOICES = "mdl_delete_choices"
 _UD_INSTALL_PROMPT_MESSAGE_ID = "mdl_install_prompt_message_id"
 _UD_INSTALL_CANCEL_EVENT = "mdl_install_cancel_event"
-_UD_INSTALL_WAITING_NAME = "mdl_install_waiting_name"
-
-_BUTTON_KEYS = (
-    "keyboard.status",
-    "keyboard.alerts",
-    "keyboard.models",
-    "keyboard.help",
-)
 
 
 # ---------------------------------------------------------------------------
@@ -387,17 +379,15 @@ async def models_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 async def install_model_name_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Install a local Ollama model after user provides its name."""
     message = update.effective_message
-    if message is None or message.text is None:
+    if message is None or message.text is None or message.reply_to_message is None:
         return
     if context.user_data is None:
         return
 
-    waiting_name = context.user_data.get(_UD_INSTALL_WAITING_NAME)
-    if waiting_name is not True:
+    prompt_message_id = context.user_data.get(_UD_INSTALL_PROMPT_MESSAGE_ID)
+    if not isinstance(prompt_message_id, int):
         return
-
-    if any(text_matches_key(message.text, key) for key in _BUTTON_KEYS):
-        context.user_data.pop(_UD_INSTALL_WAITING_NAME, None)
+    if message.reply_to_message.message_id != prompt_message_id:
         return
 
     locale = locale_from_update(update, fallback=get_config().bot_locale)
@@ -423,7 +413,6 @@ async def install_model_name_reply(update: Update, context: ContextTypes.DEFAULT
         ),
     )
     context.user_data.pop(_UD_INSTALL_PROMPT_MESSAGE_ID, None)
-    context.user_data.pop(_UD_INSTALL_WAITING_NAME, None)
     cancel_event = context.user_data.get(_UD_INSTALL_CANCEL_EVENT)
     if isinstance(cancel_event, asyncio.Event):
         cancel_event.set()
@@ -596,7 +585,6 @@ async def cb_install_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     )
     if context.user_data is not None:
         context.user_data[_UD_INSTALL_PROMPT_MESSAGE_ID] = prompt.message_id
-        context.user_data[_UD_INSTALL_WAITING_NAME] = True
 
 
 @restricted
@@ -680,6 +668,10 @@ async def cb_delete_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             cloud_options = configured_cloud_options()
             if cloud_options:
                 await store.set_active_model(cloud_options[0].selection)
+            else:
+                # No alternatives available — reset to the configured default so the
+                # active model does not keep pointing to a deleted/missing model.
+                await store.set_active_model(get_config().ollama_model)
 
     await query.edit_message_text(
         t("models.delete_done", locale=locale, model=model_name),
@@ -769,7 +761,7 @@ def register(app: Application) -> None:
     )
     app.add_handler(
         MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
+            filters.TEXT & filters.REPLY & ~filters.COMMAND,
             install_model_name_reply,
         )
     )

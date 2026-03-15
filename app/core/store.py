@@ -72,7 +72,7 @@ def _trim_history_window(
             break
 
         if used_chars + content_len > max_chars:
-            continue
+            break
 
         selected_rev.append((role, content))
         used_chars += content_len

@@ -426,14 +426,14 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     stream_push_enabled = True
     cancelled_by_user = False
     stream_keyboard = _chat_cancel_keyboard(locale, cancel_token) if cancel_token else None
+    stream_iter = llm_router.stream_chat_events(
+        selection,
+        system_prompt,
+        message.text,
+        history=history,
+    )
 
     try:
-        stream_iter = llm_router.stream_chat_events(
-            selection,
-            system_prompt,
-            message.text,
-            history=history,
-        )
         while True:
             next_chunk_task: asyncio.Task[llm_router.StreamChunk] = asyncio.create_task(
                 _next_stream_chunk(stream_iter)
@@ -534,6 +534,7 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     finally:
         if cancel_token is not None:
             _chat_cancel_events(context).pop(cancel_token, None)
+        await stream_iter.aclose()
 
     if not reply_accumulated.strip():
         reply_accumulated = t("chat.error", locale=locale)
