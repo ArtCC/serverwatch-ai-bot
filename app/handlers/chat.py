@@ -11,8 +11,10 @@ Flow:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
+import uuid
 from typing import cast
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Message, Update
@@ -41,6 +43,8 @@ _TELEGRAM_MAX_TEXT_LENGTH = 4096
 _CB_CONTEXT_INFO = "ctx_info"
 _CB_CONTEXT_CLEAR = "ctx_clear"
 _CB_CONTEXT_CLOSE = "ctx_close"
+_CB_CHAT_CANCEL_PREFIX = "chat_cancel:"
+_BD_CHAT_CANCEL_EVENTS = "chat_cancel_events"  # dict[str, asyncio.Event]
 
 _SYSTEM_WITH_METRICS = """\
 You are ServerWatch, a concise and helpful server monitoring assistant.
@@ -170,6 +174,36 @@ def _context_panel_keyboard(locale: str) -> InlineKeyboardMarkup:
             ]
         ]
     )
+
+
+def _chat_cancel_keyboard(locale: str, token: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    t("chat.cancel_button", locale=locale),
+                    callback_data=f"{_CB_CHAT_CANCEL_PREFIX}{token}",
+                )
+            ]
+        ]
+    )
+
+
+def _chat_cancel_events(context: ContextTypes.DEFAULT_TYPE) -> dict[str, asyncio.Event]:
+    data = context.bot_data.setdefault(_BD_CHAT_CANCEL_EVENTS, {})
+    if not isinstance(data, dict):
+        context.bot_data[_BD_CHAT_CANCEL_EVENTS] = {}
+        return context.bot_data[_BD_CHAT_CANCEL_EVENTS]
+    return data
+
+
+def _parse_cancel_token(data: str) -> str | None:
+    if not data.startswith(_CB_CHAT_CANCEL_PREFIX):
+        return None
+    token = data[len(_CB_CHAT_CANCEL_PREFIX) :]
+    if not token or len(token) > 48:
+        return None
+    return token
 
 
 def _context_usage_text(locale: str, usage: store.ContextUsage) -> str:
@@ -314,15 +348,25 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await chat.send_action(ChatAction.TYPING)
 
     placeholder: Message | None = None
+    cancel_token: str | None = None
     try:
+        cancel_token = uuid.uuid4().hex[:12]
         placeholder = await message.reply_text(
             t("chat.thinking", locale=locale),
             parse_mode=ParseMode.MARKDOWN,
+            reply_markup=_chat_cancel_keyboard(locale, cancel_token),
         )
+        _chat_cancel_events(context)[cancel_token] = asyncio.Event()
     except (TimedOut, NetworkError):
         logger.warning("Telegram timeout/network error while sending thinking placeholder")
+        cancel_token = None
     except Exception:
         logger.exception("Unexpected error while sending thinking placeholder")
+        cancel_token = None
+
+    cancel_event: asyncio.Event | None = None
+    if cancel_token is not None:
+        cancel_event = _chat_cancel_events(context).get(cancel_token)
 
     # Fetch metrics (non-blocking failure)
     system_prompt: str
@@ -373,53 +417,72 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     last_edit_at = 0.0
     last_typing_at = time.monotonic()
     stream_push_enabled = True
+    cancelled_by_user = False
+    stream_keyboard = _chat_cancel_keyboard(locale, cancel_token) if cancel_token else None
 
     try:
-        async for event in llm_router.stream_chat_events(
-            selection,
-            system_prompt,
-            message.text,
-            history=history,
-        ):
-            if not event.text:
-                continue
-
-            if event.channel == "thinking":
-                thinking_accumulated += event.text
-            else:
-                reply_accumulated += event.text
-
-            # Without a placeholder we avoid sending many partial replies.
-            if placeholder is None:
-                continue
-
-            now = time.monotonic()
-            if reply_accumulated:
-                candidate = _truncate_for_telegram(reply_accumulated)
-            else:
-                candidate = _thinking_preview_text(locale, thinking_accumulated)
-
-            if (now - last_typing_at) >= _STREAM_TYPING_INTERVAL_SECONDS:
-                await chat.send_action(ChatAction.TYPING)
-                last_typing_at = now
-
-            if (
-                stream_push_enabled
-                and candidate != last_pushed
-                and (now - last_edit_at) >= _STREAM_EDIT_INTERVAL_SECONDS
+        try:
+            async for event in llm_router.stream_chat_events(
+                selection,
+                system_prompt,
+                message.text,
+                history=history,
             ):
-                pushed = await _safe_edit_or_reply(
-                    source_message=message,
-                    placeholder=placeholder,
-                    text=candidate,
-                    allow_fallback_reply=False,
-                )
-                if pushed:
-                    last_pushed = candidate
-                    last_edit_at = now
+                if cancel_event is not None and cancel_event.is_set():
+                    cancelled_by_user = True
+                    break
+
+                if not event.text:
+                    continue
+
+                if event.channel == "thinking":
+                    thinking_accumulated += event.text
                 else:
-                    # Avoid repeated partial fallback replies if placeholder edits keep failing.
-                    stream_push_enabled = False
+                    reply_accumulated += event.text
+
+                # Without a placeholder we avoid sending many partial replies.
+                if placeholder is None:
+                    continue
+
+                now = time.monotonic()
+                if reply_accumulated:
+                    candidate = _truncate_for_telegram(reply_accumulated)
+                else:
+                    candidate = _thinking_preview_text(locale, thinking_accumulated)
+
+                if (now - last_typing_at) >= _STREAM_TYPING_INTERVAL_SECONDS:
+                    await chat.send_action(ChatAction.TYPING)
+                    last_typing_at = now
+
+                if (
+                    stream_push_enabled
+                    and candidate != last_pushed
+                    and (now - last_edit_at) >= _STREAM_EDIT_INTERVAL_SECONDS
+                ):
+                    pushed = await _safe_edit_or_reply(
+                        source_message=message,
+                        placeholder=placeholder,
+                        text=candidate,
+                        reply_markup=stream_keyboard,
+                        allow_fallback_reply=False,
+                    )
+                    if pushed:
+                        last_pushed = candidate
+                        last_edit_at = now
+                    else:
+                        # Avoid repeated partial fallback replies if placeholder edits keep failing.
+                        stream_push_enabled = False
+        finally:
+            if cancel_token is not None:
+                _chat_cancel_events(context).pop(cancel_token, None)
+
+        if cancelled_by_user:
+            await _safe_edit_or_reply(
+                source_message=message,
+                placeholder=placeholder,
+                text=t("chat.cancelled", locale=locale),
+            )
+            return
     except Exception:
         logger.exception("LLM chat request failed for provider=%s", provider)
         await _safe_edit_or_reply(
@@ -541,6 +604,27 @@ async def cb_context_close(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         logger.warning("Could not delete context panel message", exc_info=True)
 
 
+@restricted
+async def cb_chat_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    if query is None:
+        return
+
+    locale = locale_from_update(update, fallback=get_config().bot_locale)
+    token = _parse_cancel_token(query.data or "")
+    if token is None:
+        await query.answer()
+        return
+
+    event = _chat_cancel_events(context).get(token)
+    if event is None:
+        await query.answer(t("chat.cancel_unavailable", locale=locale))
+        return
+
+    event.set()
+    await query.answer(t("chat.cancel_requested", locale=locale))
+
+
 def register(app: Application) -> None:
     app.add_handler(CommandHandler("context", context_command))
     app.add_handler(
@@ -552,3 +636,4 @@ def register(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(cb_context_info, pattern=f"^{_CB_CONTEXT_INFO}$"))
     app.add_handler(CallbackQueryHandler(cb_context_clear, pattern=f"^{_CB_CONTEXT_CLEAR}$"))
     app.add_handler(CallbackQueryHandler(cb_context_close, pattern=f"^{_CB_CONTEXT_CLOSE}$"))
+    app.add_handler(CallbackQueryHandler(cb_chat_cancel, pattern=f"^{_CB_CHAT_CANCEL_PREFIX}"))

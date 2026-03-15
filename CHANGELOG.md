@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.7] - 2026-03-15
+
+### Added
+
+- Added inline cancel controls for free-text chat generation while the model is reasoning/streaming.
+- Added per-request cancellation tokens and runtime cancellation events for active chat generations.
+- Added localized chat cancellation strings in `en`, `es`, `de`, `fr`, and `it`:
+	- cancel button label,
+	- cancellation requested acknowledgement,
+	- cancelled generation terminal message,
+	- no-active-generation feedback.
+
+### Changed
+
+- Free-text chat placeholder now includes a `Cancel` inline button during streaming updates.
+- Streaming loop now exits early when users request cancellation and finalizes the placeholder with a cancelled state.
+- Registered a dedicated callback handler for chat cancellation (`chat_cancel:<token>`).
+
 ## [0.0.6] - 2026-03-13
 
 ### Added
