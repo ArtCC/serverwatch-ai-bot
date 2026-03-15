@@ -108,7 +108,7 @@
     "install_button": "⬇️ Instalar modelo",
     "delete_button": "🗑️ Eliminar modelo local",
     "back_button": "↩️ Volver",
-    "install_prompt": "ℹ️ Responde a este mensaje con el nombre del modelo de Ollama que quieres instalar (ejemplo: llama3.2:3b).",
+    "install_prompt": "ℹ️ Escribe el nombre del modelo de Ollama que quieres instalar (ejemplo: llama3.2:3b).",
     "install_invalid_name": "⚠️ El nombre del modelo no puede estar vacío.",
     "install_started": "⏳ Instalando {model}...",
     "install_progress": "⏳ Instalando {model}\n{progress}",

@@ -108,7 +108,7 @@
     "install_button": "⬇️ Modell installieren",
     "delete_button": "🗑️ Lokales Modell löschen",
     "back_button": "↩️ Zurück",
-    "install_prompt": "ℹ️ Antworte auf diese Nachricht mit dem Ollama-Modellnamen, den du installieren möchtest (Beispiel: llama3.2:3b).",
+    "install_prompt": "ℹ️ Sende den Ollama-Modellnamen, den du installieren möchtest (Beispiel: llama3.2:3b).",
     "install_invalid_name": "⚠️ Der Modellname darf nicht leer sein.",
     "install_started": "⏳ {model} wird installiert...",
     "install_progress": "⏳ {model} wird installiert\n{progress}",
