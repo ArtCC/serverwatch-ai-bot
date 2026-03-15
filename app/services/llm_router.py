@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 
 import httpx
@@ -226,7 +226,7 @@ async def stream_chat_events(
     user_message: str,
     *,
     history: ChatHistory | None = None,
-) -> AsyncIterator[StreamChunk]:
+) -> AsyncGenerator[StreamChunk, None]:
     """Yield streaming chunks with explicit channel metadata.
 
     Returned channels are:
