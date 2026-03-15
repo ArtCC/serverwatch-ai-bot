@@ -16,12 +16,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 	- cancellation requested acknowledgement,
 	- cancelled generation terminal message,
 	- no-active-generation feedback.
+- Added local Ollama model management actions inside `/models`:
+	- install by model name from inline flow,
+	- live pull progress bar (`█░`, percentage, MB transferred),
+	- inline cancel button for active model downloads,
+	- delete local model by selection with inline confirmation.
+- Added Ollama local model lifecycle API helpers:
+	- `pull_model()` streaming integration for `/api/pull`,
+	- `delete_model()` integration for `DELETE /api/delete`.
+- Added localized model-download cancellation strings in `en`, `es`, `de`, `fr`, and `it`:
+	- cancel download button label,
+	- cancellation requested acknowledgement,
+	- cancelled download message,
+	- no-active-download feedback.
 
 ### Changed
 
 - Free-text chat placeholder now includes a `Cancel` inline button during streaming updates.
 - Streaming loop now exits early when users request cancellation and finalizes the placeholder with a cancelled state.
 - Registered a dedicated callback handler for chat cancellation (`chat_cancel:<token>`).
+- Updated `/models` inline UX to include install and delete local-model actions, while keeping destructive operations protected by confirmation.
 
 ## [0.0.6] - 2026-03-13
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 
 import httpx
 
@@ -60,6 +60,59 @@ async def list_models() -> list[str]:
     resp = await client.get(f"{base_url}/api/tags")
     resp.raise_for_status()
     return _extract_model_names(resp.json())
+
+
+async def pull_model(
+    model_name: str,
+    *,
+    progress_callback: Callable[[str, int, int], Awaitable[None]] | None = None,
+    cancel_event: asyncio.Event | None = None,
+) -> None:
+    """Stream-download a model via POST /api/pull.
+
+    Calls ``progress_callback(status, completed, total)`` for every NDJSON line
+    received from Ollama.
+    """
+    base_url = get_config().ollama_base_url.rstrip("/")
+    client = await _get_chat_client()
+    async with client.stream(
+        "POST",
+        f"{base_url}/api/pull",
+        json={"model": model_name, "stream": True},
+    ) as resp:
+        resp.raise_for_status()
+        async for line in resp.aiter_lines():
+            if cancel_event and cancel_event.is_set():
+                raise asyncio.CancelledError(f"Pull cancelled: {model_name}")
+            if not line.strip():
+                continue
+            try:
+                chunk = json.loads(line)
+            except json.JSONDecodeError:
+                logger.warning("Skipping invalid JSON chunk from Ollama pull stream")
+                continue
+            if not isinstance(chunk, dict):
+                continue
+            if err := chunk.get("error"):
+                raise RuntimeError(f"Pull error: {err}")
+            if progress_callback:
+                await progress_callback(
+                    str(chunk.get("status", "")),
+                    int(chunk.get("completed", 0) or 0),
+                    int(chunk.get("total", 0) or 0),
+                )
+
+
+async def delete_model(model_name: str) -> None:
+    """Delete a local model via DELETE /api/delete."""
+    base_url = get_config().ollama_base_url.rstrip("/")
+    client = await _get_list_client()
+    resp = await client.request(
+        "DELETE",
+        f"{base_url}/api/delete",
+        json={"model": model_name},
+    )
+    resp.raise_for_status()
 
 
 async def chat(

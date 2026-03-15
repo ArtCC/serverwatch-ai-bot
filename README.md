@@ -86,7 +86,7 @@ Notes:
 | `/status` | Current server metrics snapshot |
 | `/alerts` | View and configure alert thresholds |
 | `/glances` | Open live Glances per-endpoint detail menu |
-| `/models` | List model options and select the active one |
+| `/models` | Open model manager: switch active model, install local Ollama models, and delete local models |
 | `/help` | Show help message |
 
 ## Persistent keyboard
@@ -98,7 +98,10 @@ Notes:
 
 ## Inline flows
 
-- `Model selection` (`/models`): lists all local Ollama models and optionally cloud provider options (`OpenAI`, `Anthropic`, `DeepSeek`) when API key and model are configured. Active option is marked with `✅`.
+- `Model manager` (`/models`): lists all local Ollama models and optionally cloud provider options (`OpenAI`, `Anthropic`, `DeepSeek`) when API key and model are configured. Active option is marked with `✅`.
+- `Model install` (inside `/models`): tap `⬇️ Install model`, reply with an Ollama model name (for example `llama3.2:3b`), and the bot starts `POST /api/pull` with a live progress bar (`█░`, percentage, MB transferred).
+- `Install cancel` (during model download): while a local model is downloading, an inline `⛔ Cancel download` button is shown; pressing it requests cancellation and stops the active pull safely.
+- `Model delete` (inside `/models`): tap `🗑️ Delete local model`, select one local Ollama model from the inline list, then confirm with `✅ Confirm` before deletion (`DELETE /api/delete`).
 - `Alert thresholds` (`/alerts`): edit CPU/RAM/Disk thresholds with confirmation.
 - `Glances details` (`/glances` or inline button from `/status`): open a live menu and fetch one Glances endpoint on demand (CPU, RAM, disk, network, containers, top processes, etc.).
 - `Chat context controls` (free-text replies): `ℹ️ Context` shows current context usage; panel includes `🧹 Clear` and `❌ Close`.
