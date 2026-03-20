@@ -58,6 +58,7 @@ bot queries this fixed bundle in parallel:
 - `/core`
 - `/version`
 - `/pluginslist`
+- `/gpu`
 - `/all/limits`
 - `/cpu/total/history/3`
 - `/mem/percent/history/3`
@@ -72,7 +73,7 @@ Notes:
 - Set `GLANCES_LOG_FULL_PAYLOAD=true` to log the full aggregated Glances JSON
   at `INFO` level for diagnostics (for example in container logs).
 - `/status` now prioritizes operational value: trends, top bottlenecks, recommended action,
-  and what to watch next.
+  what to watch next, and top GPU usage when available.
 - Free-text AI chat now uses compact status context (`as_llm_context_json`) instead of the
   full raw bundle to improve latency and reduce prompt noise.
 - Scheduler alerts include classic metric threshold alarms plus a global health alert
@@ -103,7 +104,7 @@ Notes:
 - `Install cancel` (during model download): while a local model is downloading, an inline `⛔ Cancel download` button is shown; pressing it requests cancellation and stops the active pull safely.
 - `Model delete` (inside `/models`): tap `🗑️ Delete local model`, select one local Ollama model from the inline list, then confirm with `✅ Confirm` before deletion (`DELETE /api/delete`).
 - `Alert thresholds` (`/alerts`): edit CPU/RAM/Disk thresholds with confirmation.
-- `Glances details` (`/glances` or inline button from `/status`): open a live menu and fetch one Glances endpoint on demand (CPU, RAM, disk, network, containers, top processes, etc.).
+- `Glances details` (`/glances` or inline button from `/status`): open a live menu and fetch one Glances endpoint on demand (CPU, RAM, disk, GPU, network, containers, top processes, etc.).
 - `Chat context controls` (free-text replies): `ℹ️ Context` shows current context usage; panel includes `🧹 Clear` and `❌ Close`.
 
 ## Architecture tree

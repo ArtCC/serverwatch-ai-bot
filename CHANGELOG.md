@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.8] - 2026-03-20
+
+### Added
+
+- Added GPU endpoint support in Glances aggregation and live detail flows:
+	- `/gpu` is now fetched as part of the fixed endpoint bundle,
+	- `/gpu` is now available in the `/glances` detail menu and callback allowlist.
+- Added GPU operational summary fields to `ServerSnapshot`:
+	- GPU availability and device count,
+	- top GPU name,
+	- top GPU utilization percent,
+	- top GPU memory percent,
+	- top GPU temperature.
+- Added `status.gpu` locale key in `en`, `es`, `de`, `fr`, and `it`.
+- Added Glances unit tests for GPU endpoint registration and top-GPU selection behavior.
+
+### Changed
+
+- `/status` now includes a GPU line (when GPU metrics are available) with utilization, VRAM usage, and temperature.
+- Compact AI status context (`as_llm_context_json`) now includes a dedicated `gpu` object for downstream model reasoning.
+- Operational scoring/watch-next logic now considers GPU utilization when GPU data is present.
+
 ## [0.0.7] - 2026-03-15
 
 ### Added
