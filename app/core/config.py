@@ -73,7 +73,7 @@ class Config:
             alert_recovery_margin_percent=float(os.getenv("ALERT_RECOVERY_MARGIN_PERCENT", "5")),
             alert_context_window_samples=int(os.getenv("ALERT_CONTEXT_WINDOW_SAMPLES", "3")),
             chat_context_max_turns=int(os.getenv("CHAT_CONTEXT_MAX_TURNS", "8")),
-            chat_context_max_chars=int(os.getenv("CHAT_CONTEXT_MAX_CHARS", "6000")),
+            chat_context_max_chars=int(os.getenv("CHAT_CONTEXT_MAX_CHARS", "10000")),
             chat_context_retention_messages=int(
                 os.getenv("CHAT_CONTEXT_RETENTION_MESSAGES", "200")
             ),

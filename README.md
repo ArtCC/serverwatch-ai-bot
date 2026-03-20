@@ -174,7 +174,7 @@ Notes:
 | `ALERT_RECOVERY_MARGIN_PERCENT` | | `5` | Hysteresis margin (threshold - margin) required to reset alert state |
 | `ALERT_CONTEXT_WINDOW_SAMPLES` | | `3` | Number of recent samples used for alert context average |
 | `CHAT_CONTEXT_MAX_TURNS` | | `8` | Max past user+assistant turns included in AI context |
-| `CHAT_CONTEXT_MAX_CHARS` | | `6000` | Max total chars for stored context window sent to AI |
+| `CHAT_CONTEXT_MAX_CHARS` | | `10000` | Max total chars for stored context window sent to AI |
 | `CHAT_CONTEXT_RETENTION_MESSAGES` | | `200` | Max persisted chat messages kept per chat |
 
 ## Deployment

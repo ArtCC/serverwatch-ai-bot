@@ -624,10 +624,15 @@ async def cb_context_clear(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
     locale = locale_from_update(update, fallback=get_config().bot_locale)
     await store.clear_chat_context(message.chat_id)
-    await query.edit_message_text(
-        t("chat.context_cleared", locale=locale),
-        reply_markup=_context_panel_keyboard(locale),
-    )
+    try:
+        await query.edit_message_text(
+            t("chat.context_cleared", locale=locale),
+            reply_markup=_context_panel_keyboard(locale),
+        )
+    except BadRequest as exc:
+        # Telegram can return this when the panel is already in the same state.
+        if "message is not modified" not in str(exc).lower():
+            raise
 
 
 @restricted

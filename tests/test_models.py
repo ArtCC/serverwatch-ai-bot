@@ -60,7 +60,7 @@ def test_configured_cloud_options_only_returns_fully_configured_providers() -> N
         alert_recovery_margin_percent=5.0,
         alert_context_window_samples=3,
         chat_context_max_turns=8,
-        chat_context_max_chars=6000,
+        chat_context_max_chars=10000,
         chat_context_retention_messages=200,
         tz="UTC",
     )
