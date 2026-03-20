@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.9] - 2026-03-20
+
+### Added
+
+- Added missing runtime variables to Docker Compose bot service for full config parity:
+	- `GLANCES_LOG_FULL_PAYLOAD`,
+	- `CHAT_CONTEXT_MAX_TURNS`,
+	- `CHAT_CONTEXT_MAX_CHARS`,
+	- `CHAT_CONTEXT_RETENTION_MESSAGES`.
+- Added missing chat context variables to `.env.example`:
+	- `CHAT_CONTEXT_MAX_TURNS`,
+	- `CHAT_CONTEXT_RETENTION_MESSAGES`.
+- Added Glances GPU parsing coverage tests for nested payload variants and memory usage derivation.
+
+### Changed
+
+- Increased default `CHAT_CONTEXT_MAX_CHARS` from `6000` to `10000` in runtime config and docs.
+- Hardened context clear callback to ignore Telegram `BadRequest: Message is not modified` when the context panel message is already up to date.
+- Improved GPU data normalization in Glances integration to handle multiple payload shapes/field names and derive VRAM percent from used/total values when needed.
+- Updated `docker-compose.yml` Glances service with GPU runtime access hints (`gpus: all` and `/dev/dri` mapping) to improve NVIDIA + Intel iGPU telemetry visibility.
+
 ## [0.0.8] - 2026-03-20
 
 ### Added
