@@ -367,9 +367,7 @@ async def _fetch_snapshot() -> ServerSnapshot:
     processes = _as_list_of_dicts(payload.get("processlist"))
     network = _as_list_of_dicts(payload.get("network"))
     gpu_payload = payload.get("gpu")
-    gpus = _as_list_of_dicts(gpu_payload)
-    if not gpus and isinstance(gpu_payload, dict):
-        gpus = [_as_dict(gpu_payload)]
+    gpus = _normalize_gpu_list(gpu_payload)
     limits = _as_dict(payload.get("limits"))
 
     cpu_history = _history_values(payload.get("cpu_history"), "total")
@@ -420,8 +418,19 @@ async def _fetch_snapshot() -> ServerSnapshot:
     )
     gpu_mem_percent = _first_num(
         top_gpu,
-        ("mem", "memory_percent", "mem_utilization", "vram_percent"),
+        (
+            "mem",
+            "memory_percent",
+            "mem_utilization",
+            "vram_percent",
+            "utilization_memory",
+        ),
     )
+    if gpu_mem_percent <= 0:
+        mem_total = _first_num(top_gpu, ("memory_total", "mem_total", "vram_total"))
+        mem_used = _first_num(top_gpu, ("memory_used", "mem_used", "vram_used"))
+        if mem_total > 0:
+            gpu_mem_percent = min(100.0, (mem_used / mem_total) * 100.0)
     gpu_temp_c = _first_num(top_gpu, ("temperature", "temp", "temperature_gpu"))
 
     logical_cores = max(_num(core.get("log", load.get("cpucore", 1))), 1.0)
@@ -690,9 +699,38 @@ def _pick_top_gpu(gpu_list: list[dict[str, object]]) -> dict[str, object]:
         gpu_list,
         key=lambda gpu: _first_num(
             gpu,
-            ("utilization", "gpu_utilization", "gpu_percent", "proc", "load", "percent"),
+            (
+                "utilization",
+                "utilization_gpu",
+                "gpu_utilization",
+                "gpu_percent",
+                "proc",
+                "load",
+                "percent",
+            ),
         ),
     )
+
+
+def _normalize_gpu_list(payload: object) -> list[dict[str, object]]:
+    """Normalize Glances GPU payload variants to a flat list of GPU objects."""
+    list_payload = _as_list_of_dicts(payload)
+    if list_payload:
+        return list_payload
+
+    if not isinstance(payload, dict):
+        return []
+
+    data = _as_dict(payload)
+    for key in ("gpus", "gpu", "devices", "cards"):
+        nested = _as_list_of_dicts(data.get(key))
+        if nested:
+            return nested
+
+    # Some integrations expose a single GPU object as a dict.
+    if data:
+        return [data]
+    return []
 
 
 def _first_num(source: dict[str, object], keys: tuple[str, ...]) -> float:

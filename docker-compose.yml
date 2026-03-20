@@ -45,12 +45,17 @@ services:
     container_name: serverwatch-glances
     restart: unless-stopped
     pid: host
+    # Needed in regular `docker compose` mode for NVIDIA GPU visibility.
+    gpus: all
     environment:
       GLANCES_OPT: "-w"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       # Uncomment to show host OS details instead of container OS details
       # - /etc/os-release:/etc/os-release:ro
+    devices:
+      # Needed for Intel iGPU telemetry (e.g. /dev/dri/renderD128).
+      - /dev/dri:/dev/dri
     ports:
       - "127.0.0.1:61208:61208"
     # For nvidia GPUs

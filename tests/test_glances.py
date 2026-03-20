@@ -11,6 +11,8 @@ from app.services.glances import (
     _base_url_candidates,
     _fetch_all,
     _get_json_with_fallback,
+    _normalize_gpu_list,
+    _num,
     _pick_top_gpu,
     _pick_top_network_interface,
     _severity_for_metric,
@@ -179,3 +181,30 @@ def test_pick_top_gpu_prefers_highest_utilization() -> None:
 
     picked = _pick_top_gpu(gpus)
     assert picked["name"] == "GPU-1"
+
+
+def test_normalize_gpu_list_accepts_nested_payload_shape() -> None:
+    payload = {
+        "gpus": [
+            {"name": "Intel UHD", "utilization_gpu": 23.0},
+            {"name": "RTX 4070", "utilization_gpu": 61.0},
+        ]
+    }
+
+    normalized = _normalize_gpu_list(payload)
+    assert len(normalized) == 2
+    assert normalized[1]["name"] == "RTX 4070"
+
+
+def test_gpu_mem_percent_can_be_derived_from_used_total_fields() -> None:
+    gpu = {
+        "name": "RTX 4070",
+        "memory_used": 4096,
+        "memory_total": 12288,
+    }
+
+    used = _num(gpu.get("memory_used"))
+    total = _num(gpu.get("memory_total"))
+    percent = (used / total) * 100.0
+
+    assert round(percent, 1) == 33.3

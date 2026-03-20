@@ -72,6 +72,8 @@ Notes:
 - By default, the bot logs only aggregated payload keys at `DEBUG` level.
 - Set `GLANCES_LOG_FULL_PAYLOAD=true` to log the full aggregated Glances JSON
   at `INFO` level for diagnostics (for example in container logs).
+- For GPU telemetry in Docker, Glances must have runtime device access:
+  `gpus: all` for NVIDIA and `/dev/dri` mapping for Intel iGPU.
 - `/status` now prioritizes operational value: trends, top bottlenecks, recommended action,
   what to watch next, and top GPU usage when available.
 - Free-text AI chat now uses compact status context (`as_llm_context_json`) instead of the
