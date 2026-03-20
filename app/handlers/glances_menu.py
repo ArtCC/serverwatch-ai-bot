@@ -37,6 +37,7 @@ _MENU_KEYS: tuple[str, ...] = (
     "mem",
     "fs",
     "load",
+    "gpu",
     "network",
     "containers",
     "processlist",
@@ -76,6 +77,7 @@ def _label_for_key(key: str, locale: str) -> str:
         "mem": t("glances.options.mem", locale=locale),
         "fs": t("glances.options.fs", locale=locale),
         "load": t("glances.options.load", locale=locale),
+        "gpu": t("glances.options.gpu", locale=locale),
         "network": t("glances.options.network", locale=locale),
         "containers": t("glances.options.containers", locale=locale),
         "processlist": t("glances.options.processlist", locale=locale),
@@ -294,6 +296,25 @@ def _prepare_llm_payload(key: str, payload: object) -> object:
             if key == "sensors":
                 items.append(
                     _pick_fields(item, ("label", "type", "value", "unit", "warning", "critical"))
+                )
+                continue
+            if key == "gpu":
+                items.append(
+                    _pick_fields(
+                        item,
+                        (
+                            "name",
+                            "id",
+                            "gpu_id",
+                            "mem",
+                            "mem_used",
+                            "mem_total",
+                            "temperature",
+                            "fan_speed",
+                            "utilization",
+                            "power_draw",
+                        ),
+                    )
                 )
                 continue
 
@@ -517,6 +538,10 @@ def _menu_keyboard(locale: str) -> InlineKeyboardMarkup:
                 InlineKeyboardButton(
                     _label_for_key("load", locale),
                     callback_data=f"{_CB_SELECT_PREFIX}load",
+                ),
+                InlineKeyboardButton(
+                    _label_for_key("gpu", locale),
+                    callback_data=f"{_CB_SELECT_PREFIX}gpu",
                 ),
                 InlineKeyboardButton(
                     _label_for_key("network", locale),

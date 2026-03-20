@@ -11,12 +11,18 @@ from app.services.glances import (
     _base_url_candidates,
     _fetch_all,
     _get_json_with_fallback,
+    _pick_top_gpu,
     _pick_top_network_interface,
     _severity_for_metric,
     _severity_for_ratio,
     _thresholds_for,
     _trend_label,
 )
+
+
+def test_gpu_endpoint_is_registered() -> None:
+    endpoints = dict(_ENDPOINTS)
+    assert endpoints["gpu"] == "/gpu"
 
 
 class _FakeResponse:
@@ -163,3 +169,13 @@ def test_pick_top_network_interface_skips_loopback_and_prefers_highest_rate() ->
 
     picked = _pick_top_network_interface(network)
     assert picked["interface_name"] == "eth0"
+
+
+def test_pick_top_gpu_prefers_highest_utilization() -> None:
+    gpus = [
+        {"name": "GPU-0", "utilization": 12.0},
+        {"name": "GPU-1", "utilization": 78.5},
+    ]
+
+    picked = _pick_top_gpu(gpus)
+    assert picked["name"] == "GPU-1"

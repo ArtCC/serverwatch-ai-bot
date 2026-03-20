@@ -52,6 +52,7 @@ _ENDPOINTS: tuple[tuple[str, str], ...] = (
     ("core", "/core"),
     ("version", "/version"),
     ("pluginslist", "/pluginslist"),
+    ("gpu", "/gpu"),
     ("limits", "/all/limits"),
     ("cpu_history", "/cpu/total/history/3"),
     ("mem_history", "/mem/percent/history/3"),
@@ -69,6 +70,7 @@ _DETAIL_ENDPOINTS: dict[str, str] = {
     "uptime": "/uptime",
     "system": "/system",
     "sensors": "/sensors",
+    "gpu": "/gpu",
 }
 
 
@@ -98,6 +100,12 @@ class ServerSnapshot:
     network_top_interface: str
     network_rx_bps: float
     network_tx_bps: float
+    gpu_available: bool
+    gpu_count: int
+    gpu_name: str
+    gpu_util_percent: float
+    gpu_mem_percent: float
+    gpu_temp_c: float
     top_mounts: list[dict[str, object]]
     cpu_trend: str
     ram_trend: str
@@ -149,17 +157,29 @@ class ServerSnapshot:
                 f"({t('status.per_core', locale=locale)}: {self.load_per_core:.2f}, "
                 f"{t('status.trend', locale=locale)}: {self.load_trend})"
             ),
-            (
-                f"{t('status.processes', locale=locale)}: "
-                f"{self.process_running}/{self.process_total} "
-                f"{t('status.running', locale=locale)} | "
-                f"{t('status.network', locale=locale)}: {self.network_top_interface} "
-                f"(RX {self.network_rx_bps / (1024**2):.2f} MB/s, "
-                f"TX {self.network_tx_bps / (1024**2):.2f} MB/s)"
-            ),
-            f"{t('status.uptime', locale=locale)}: {self.uptime}",
-            f"{t('status.docker', locale=locale)}: {self.docker_running} / {self.docker_total}",
         ]
+
+        if self.gpu_available:
+            lines.append(
+                f"{t('status.gpu', locale=locale)}: {self.gpu_util_percent:.1f}% "
+                f"| VRAM {self.gpu_mem_percent:.1f}% "
+                f"| {self.gpu_temp_c:.1f}C ({self.gpu_name})"
+            )
+
+        lines.extend(
+            [
+                (
+                    f"{t('status.processes', locale=locale)}: "
+                    f"{self.process_running}/{self.process_total} "
+                    f"{t('status.running', locale=locale)} | "
+                    f"{t('status.network', locale=locale)}: {self.network_top_interface} "
+                    f"(RX {self.network_rx_bps / (1024**2):.2f} MB/s, "
+                    f"TX {self.network_tx_bps / (1024**2):.2f} MB/s)"
+                ),
+                f"{t('status.uptime', locale=locale)}: {self.uptime}",
+                f"{t('status.docker', locale=locale)}: {self.docker_running} / {self.docker_total}",
+            ]
+        )
 
         if self.key_findings:
             lines.append("")
@@ -234,6 +254,14 @@ class ServerSnapshot:
                 "interface": self.network_top_interface,
                 "rx_bps": round(self.network_rx_bps, 2),
                 "tx_bps": round(self.network_tx_bps, 2),
+            },
+            "gpu": {
+                "available": self.gpu_available,
+                "count": self.gpu_count,
+                "name": self.gpu_name,
+                "util_percent": round(self.gpu_util_percent, 2),
+                "vram_percent": round(self.gpu_mem_percent, 2),
+                "temp_c": round(self.gpu_temp_c, 2),
             },
             "containers": {
                 "running": self.docker_running,
@@ -338,6 +366,10 @@ async def _fetch_snapshot() -> ServerSnapshot:
     containers = _as_list_of_dicts(payload.get("containers"))
     processes = _as_list_of_dicts(payload.get("processlist"))
     network = _as_list_of_dicts(payload.get("network"))
+    gpu_payload = payload.get("gpu")
+    gpus = _as_list_of_dicts(gpu_payload)
+    if not gpus and isinstance(gpu_payload, dict):
+        gpus = [_as_dict(gpu_payload)]
     limits = _as_dict(payload.get("limits"))
 
     cpu_history = _history_values(payload.get("cpu_history"), "total")
@@ -372,6 +404,25 @@ async def _fetch_snapshot() -> ServerSnapshot:
     )
 
     top_iface = _pick_top_network_interface(network)
+    top_gpu = _pick_top_gpu(gpus)
+    gpu_available = bool(top_gpu)
+    gpu_name = str(
+        top_gpu.get("name")
+        or top_gpu.get("gpu_name")
+        or top_gpu.get("device_name")
+        or top_gpu.get("id")
+        or top_gpu.get("gpu_id")
+        or "n/a"
+    )
+    gpu_util_percent = _first_num(
+        top_gpu,
+        ("utilization", "gpu_utilization", "gpu_percent", "proc", "load", "percent"),
+    )
+    gpu_mem_percent = _first_num(
+        top_gpu,
+        ("mem", "memory_percent", "mem_utilization", "vram_percent"),
+    )
+    gpu_temp_c = _first_num(top_gpu, ("temperature", "temp", "temperature_gpu"))
 
     logical_cores = max(_num(core.get("log", load.get("cpucore", 1))), 1.0)
     load_1 = _num(load.get("min1", 0.0))
@@ -388,6 +439,7 @@ async def _fetch_snapshot() -> ServerSnapshot:
     disk_thresholds = _thresholds_for(limits, "fs")
     swap_thresholds = _thresholds_for(limits, "memswap")
     load_thresholds = _thresholds_for(limits, "load")
+    gpu_thresholds = _thresholds_for(limits, "gpu")
 
     severity_points: list[tuple[str, int, str]] = [
         _severity_for_metric("CPU", cpu_percent, cpu_thresholds),
@@ -396,6 +448,8 @@ async def _fetch_snapshot() -> ServerSnapshot:
         _severity_for_metric("Swap", swap_percent, swap_thresholds),
         _severity_for_ratio("Load/core", load_per_core, load_thresholds),
     ]
+    if gpu_available:
+        severity_points.append(_severity_for_metric("GPU", gpu_util_percent, gpu_thresholds))
 
     critical_mount = top_mounts[0] if top_mounts else None
     if critical_mount and _num(critical_mount.get("percent", 0)) >= 90:
@@ -435,6 +489,8 @@ async def _fetch_snapshot() -> ServerSnapshot:
         ("Swap", swap_percent),
         ("Load/core", load_per_core),
     ]
+    if gpu_available:
+        watch_candidates.append(("GPU", gpu_util_percent))
     watch_item = max(watch_candidates, key=lambda item: item[1])[0]
 
     return ServerSnapshot(
@@ -460,6 +516,12 @@ async def _fetch_snapshot() -> ServerSnapshot:
         network_top_interface=str(top_iface.get("interface_name") or "n/a"),
         network_rx_bps=_num(top_iface.get("bytes_recv_rate_per_sec", 0)),
         network_tx_bps=_num(top_iface.get("bytes_sent_rate_per_sec", 0)),
+        gpu_available=gpu_available,
+        gpu_count=len(gpus),
+        gpu_name=gpu_name,
+        gpu_util_percent=gpu_util_percent,
+        gpu_mem_percent=gpu_mem_percent,
+        gpu_temp_c=gpu_temp_c,
         top_mounts=top_mounts[:3],
         cpu_trend=_trend_label(cpu_history),
         ram_trend=_trend_label(mem_history),
@@ -618,6 +680,26 @@ def _pick_top_network_interface(network_list: list[dict[str, object]]) -> dict[s
             + _num(iface.get("bytes_sent_rate_per_sec", 0))
         ),
     )
+
+
+def _pick_top_gpu(gpu_list: list[dict[str, object]]) -> dict[str, object]:
+    if not gpu_list:
+        return {}
+
+    return max(
+        gpu_list,
+        key=lambda gpu: _first_num(
+            gpu,
+            ("utilization", "gpu_utilization", "gpu_percent", "proc", "load", "percent"),
+        ),
+    )
+
+
+def _first_num(source: dict[str, object], keys: tuple[str, ...]) -> float:
+    for key in keys:
+        if key in source:
+            return _num(source.get(key))
+    return 0.0
 
 
 def _thresholds_for(
