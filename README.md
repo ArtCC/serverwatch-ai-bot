@@ -152,6 +152,7 @@ Notes:
 | `TELEGRAM_CHAT_ID` | ✅ | — | Authorized chat ID |
 | `GLANCES_BASE_URL` | | `http://glances:61208/api/4` | Glances API base URL |
 | `GLANCES_REQUEST_TIMEOUT_SECONDS` | | `8.0` | Per-endpoint Glances request timeout |
+| `GLANCES_MAX_CONCURRENCY` | | `4` | Max simultaneous Glances endpoint requests from the bot |
 | `GLANCES_LOG_FULL_PAYLOAD` | | `false` | Log full aggregated Glances payload at `INFO` |
 | `OLLAMA_BASE_URL` | | `http://host.docker.internal:11434` | Ollama API base URL |
 | `OLLAMA_MODEL` | | `llama3.2:3b` | Default Ollama model |

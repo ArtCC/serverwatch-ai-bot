@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import time
 from dataclasses import dataclass
 from urllib.parse import urlsplit, urlunsplit
@@ -31,6 +32,15 @@ _client_lock = asyncio.Lock()
 def _request_timeout() -> float:
     """Per-request timeout for individual Glances endpoints."""
     return get_config().glances_request_timeout_seconds
+
+
+def _max_concurrency() -> int:
+    """Maximum number of in-flight Glances requests for one snapshot."""
+    raw = os.getenv("GLANCES_MAX_CONCURRENCY", "4")
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return 4
 
 
 _ENDPOINTS: tuple[tuple[str, str], ...] = (
@@ -56,6 +66,17 @@ _ENDPOINTS: tuple[tuple[str, str], ...] = (
     ("cpu_history", "/cpu/total/history/3"),
     ("mem_history", "/mem/percent/history/3"),
     ("load_history", "/load/min1/history/3"),
+)
+
+_CRITICAL_ENDPOINT_KEYS: frozenset[str] = frozenset(
+    {
+        "cpu",
+        "mem",
+        "fs",
+        "load",
+        "processcount",
+        "uptime",
+    }
 )
 
 _DETAIL_ENDPOINTS: dict[str, str] = {
@@ -359,6 +380,12 @@ async def _fetch_snapshot() -> ServerSnapshot:
         failed_keys = ", ".join(sorted(endpoint_errors.keys()))
         if failed == total:
             raise RuntimeError(f"All Glances endpoint requests failed ({failed_keys})")
+        critical_failed = sorted(set(endpoint_errors.keys()) & _CRITICAL_ENDPOINT_KEYS)
+        if critical_failed:
+            raise RuntimeError(
+                "Critical Glances endpoints failed "
+                f"({', '.join(critical_failed)}); snapshot considered unavailable"
+            )
         logger.warning(
             "Glances partial endpoint failure (%s/%s): %s",
             failed,
@@ -570,12 +597,15 @@ async def _fetch_all(client: httpx.AsyncClient, base_url: str) -> dict[str, obje
     mid-flight and guarantees a complete best-effort bundle for the LLM context.
     """
 
+    semaphore = asyncio.Semaphore(_max_concurrency())
+
     async def _fetch_endpoint(key: str, path: str) -> tuple[str, object]:
-        try:
-            payload = await _get_json_with_fallback(client, base_url, path)
-            return key, payload
-        except Exception as exc:  # noqa: BLE001
-            return key, {"_error": str(exc), "_endpoint": path}
+        async with semaphore:
+            try:
+                payload = await _get_json_with_fallback(client, base_url, path)
+                return key, payload
+            except Exception as exc:  # noqa: BLE001
+                return key, {"_error": repr(exc), "_endpoint": path}
 
     results = await asyncio.gather(*(_fetch_endpoint(key, path) for key, path in _ENDPOINTS))
     return {key: value for key, value in results}
@@ -684,10 +714,11 @@ async def _get_json_with_fallback(
             last_error = exc
             elapsed_ms = (time.perf_counter() - started_at) * 1000
             logger.warning(
-                "Glances connect error endpoint=%s url=%s elapsed_ms=%.1f error=%s",
+                "Glances connect error endpoint=%s url=%s elapsed_ms=%.1f error_type=%s error=%r",
                 path,
                 _safe_url_for_logs(url),
                 elapsed_ms,
+                type(exc).__name__,
                 exc,
             )
             is_last = index == len(candidates) - 1
@@ -698,16 +729,32 @@ async def _get_json_with_fallback(
                 candidate,
                 exc,
             )
+        except httpx.TimeoutException as exc:
+            last_error = exc
+            elapsed_ms = (time.perf_counter() - started_at) * 1000
+            logger.warning(
+                "Glances timeout endpoint=%s url=%s elapsed_ms=%.1f error_type=%s error=%r",
+                path,
+                _safe_url_for_logs(url),
+                elapsed_ms,
+                type(exc).__name__,
+                exc,
+            )
+            raise
         except httpx.HTTPStatusError as exc:
             last_error = exc
             elapsed_ms = (time.perf_counter() - started_at) * 1000
             status = exc.response.status_code if exc.response is not None else "n/a"
             logger.warning(
-                "Glances HTTP error endpoint=%s url=%s status=%s elapsed_ms=%.1f error=%s",
+                (
+                    "Glances HTTP error endpoint=%s url=%s status=%s "
+                    "elapsed_ms=%.1f error_type=%s error=%r"
+                ),
                 path,
                 _safe_url_for_logs(url),
                 status,
                 elapsed_ms,
+                type(exc).__name__,
                 exc,
             )
             raise
@@ -715,10 +762,14 @@ async def _get_json_with_fallback(
             last_error = exc
             elapsed_ms = (time.perf_counter() - started_at) * 1000
             logger.warning(
-                "Glances unexpected error endpoint=%s url=%s elapsed_ms=%.1f error=%s",
+                (
+                    "Glances unexpected error endpoint=%s url=%s "
+                    "elapsed_ms=%.1f error_type=%s error=%r"
+                ),
                 path,
                 _safe_url_for_logs(url),
                 elapsed_ms,
+                type(exc).__name__,
                 exc,
             )
             raise
