@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.11] - 2026-03-22
+
+### Added
+
+- **LLM provider sub-package** (`app/services/providers/`): extracted OpenAI, Anthropic and DeepSeek implementations into dedicated modules (`openai_provider.py`, `anthropic_provider.py`, `deepseek_provider.py`) plus a shared `common.py` with HTTP client, SSE parsing, message builders and delta extractors.
+- **Config validation**: `Config.__post_init__` now enforces range checks on all 14 numeric fields — invalid values raise `ValueError` at startup.
+- **`ANTHROPIC_MAX_TOKENS`** environment variable (default `2048`) to control Anthropic response length. Added to config, Docker Compose, and Anthropic provider payloads.
+- **Docker healthcheck** in `docker-compose.yml` (`python3 -c "import app"`, interval 30 s, 3 retries).
+- **Multilingual Glances hints**: `_GLANCES_HINTS` in `chat.py` expanded from ~28 to ~53 keywords covering French, German and Italian.
+- **SQLite WAL mode**: `PRAGMA journal_mode=WAL` in `init_db()` for better concurrent read performance.
+- **32 new tests** (40 → 72): config validation (19 parametrized), `_trim_history_window` & `sanitize_history` (7), store CRUD with `:memory:` SQLite (6).
+- **CONTRIBUTING.md**: documented singleton + lock pattern with table of singletons and testing rules.
+
+### Changed
+
+- **LLM router refactored**: `llm_router.py` reduced from 837 lines to ~200-line routing layer that delegates to provider sub-modules. Dead `_stream_with_fallback` removed; only `_stream_with_fallback_events` retained.
+- **`_prepare_llm_payload` data-driven**: replaced ~120 lines of cascading `if/elif` with two lookup dicts (`_DICT_ENDPOINT_FIELDS`, `_LIST_ITEM_FIELDS`) in `glances_menu.py`.
+- **`chat_handler` decomposed**: extracted `_resolve_system_prompt()` (Glances decision + prompt building) and `_persist_exchange()` (context persistence) helpers in `chat.py`.
+- **Dockerfile build order**: `COPY app/__init__.py` before `pip install .` so setuptools can find the package during dependency resolution.
+- **Ruff version pinned**: `ruff>=0.15` → `ruff>=0.15,<1.0` to avoid unexpected breaking changes.
+
+### Removed
+
+- `app/utils/formatting.py` — dead code (`info`/`success`/`warning`/`error` helpers were never imported).
+- `get_threshold_cpu`, `get_threshold_ram`, `get_threshold_disk` individual getters from `store.py` (superseded by `get_thresholds()`).
+
 ## [0.0.10] - 2026-03-22
 
 ### Changed
