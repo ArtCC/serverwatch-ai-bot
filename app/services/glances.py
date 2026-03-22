@@ -644,6 +644,14 @@ def _normalize_base_url(base_url: str) -> str:
     return normalized.rstrip("/")
 
 
+def _safe_url_for_logs(url: str) -> str:
+    """Return a log-safe URL without credentials or query parameters."""
+    parsed = urlsplit(url)
+    host = parsed.hostname or ""
+    netloc = host if parsed.port is None else f"{host}:{parsed.port}"
+    return urlunsplit((parsed.scheme, netloc, parsed.path, "", ""))
+
+
 def _is_name_resolution_error(exc: httpx.ConnectError) -> bool:
     text = str(exc).lower()
     return "name or service not known" in text or "nodename nor servname provided" in text
@@ -659,12 +667,29 @@ async def _get_json_with_fallback(
 
     for index, candidate in enumerate(candidates):
         url = f"{candidate}{path}"
+        started_at = time.perf_counter()
         try:
             response = await client.get(url)
+            elapsed_ms = (time.perf_counter() - started_at) * 1000
+            logger.info(
+                "Glances request ok endpoint=%s url=%s status=%s elapsed_ms=%.1f",
+                path,
+                _safe_url_for_logs(url),
+                getattr(response, "status_code", "n/a"),
+                elapsed_ms,
+            )
             response.raise_for_status()
             return response.json()
         except httpx.ConnectError as exc:
             last_error = exc
+            elapsed_ms = (time.perf_counter() - started_at) * 1000
+            logger.warning(
+                "Glances connect error endpoint=%s url=%s elapsed_ms=%.1f error=%s",
+                path,
+                _safe_url_for_logs(url),
+                elapsed_ms,
+                exc,
+            )
             is_last = index == len(candidates) - 1
             if is_last or not _is_name_resolution_error(exc):
                 raise
@@ -673,8 +698,29 @@ async def _get_json_with_fallback(
                 candidate,
                 exc,
             )
+        except httpx.HTTPStatusError as exc:
+            last_error = exc
+            elapsed_ms = (time.perf_counter() - started_at) * 1000
+            status = exc.response.status_code if exc.response is not None else "n/a"
+            logger.warning(
+                "Glances HTTP error endpoint=%s url=%s status=%s elapsed_ms=%.1f error=%s",
+                path,
+                _safe_url_for_logs(url),
+                status,
+                elapsed_ms,
+                exc,
+            )
+            raise
         except Exception as exc:  # noqa: BLE001
             last_error = exc
+            elapsed_ms = (time.perf_counter() - started_at) * 1000
+            logger.warning(
+                "Glances unexpected error endpoint=%s url=%s elapsed_ms=%.1f error=%s",
+                path,
+                _safe_url_for_logs(url),
+                elapsed_ms,
+                exc,
+            )
             raise
 
     if last_error is not None:
