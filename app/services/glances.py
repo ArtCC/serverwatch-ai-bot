@@ -101,6 +101,7 @@ class ServerSnapshot:
     recommended_action: str
     watch_item: str
     top_processes: list[dict[str, object]]
+    severity_entries: list[tuple[str, int, str, float, float, bool]] = field(default_factory=list)
     all_network_interfaces: list[dict[str, object]] = field(default_factory=list)
     all_containers: list[dict[str, object]] = field(default_factory=list)
     all_sensors: list[dict[str, object]] = field(default_factory=list)
@@ -118,20 +119,40 @@ class ServerSnapshot:
             "critical": "❌",
         }.get(self.health_level, "ℹ️")
 
+        level_text = t(f"status.level_{self.health_level}", locale=locale)
+
+        _trend_t = {
+            "up": t("status.trend_up", locale=locale),
+            "down": t("status.trend_down", locale=locale),
+            "stable": t("status.trend_stable", locale=locale),
+        }
+
+        # Metric name translation for watch_item / findings.
+        _metric_t: dict[str, str] = {
+            "CPU": t("status.cpu", locale=locale),
+            "RAM": t("status.ram", locale=locale),
+            "Disk": t("status.disk", locale=locale),
+            "Swap": t("status.swap", locale=locale),
+            "Load/core": t("status.metric_load_core", locale=locale),
+            "GPU": t("status.gpu", locale=locale),
+        }
+
         lines = [
             (
                 f"{level_icon} {t('status.health', locale=locale)}: "
-                f"{self.health_level.upper()} ({self.health_score}/100)"
+                f"{level_text} ({self.health_score}/100)"
             ),
             "",
             (
                 f"{t('status.cpu', locale=locale)}: {self.cpu_percent:.1f}% "
-                f"({t('status.trend', locale=locale)}: {self.cpu_trend})"
+                f"({t('status.trend', locale=locale)}: "
+                f"{_trend_t.get(self.cpu_trend, self.cpu_trend)})"
             ),
             (
                 f"{t('status.ram', locale=locale)}: {self.ram_percent:.1f}% "
                 f"({self.ram_used_gb:.1f} / {self.ram_total_gb:.1f} GB, "
-                f"{t('status.trend', locale=locale)}: {self.ram_trend})"
+                f"{t('status.trend', locale=locale)}: "
+                f"{_trend_t.get(self.ram_trend, self.ram_trend)})"
             ),
             (
                 f"{t('status.disk', locale=locale)}: {self.disk_percent:.1f}% "
@@ -144,8 +165,10 @@ class ServerSnapshot:
             (
                 f"{t('status.load', locale=locale)}: "
                 f"{self.load_1:.2f} / {self.load_5:.2f} / {self.load_15:.2f} "
-                f"({t('status.per_core', locale=locale)}: {self.load_per_core:.2f}, "
-                f"{t('status.trend', locale=locale)}: {self.load_trend})"
+                f"({t('status.per_core', locale=locale)}: "
+                f"{self.load_per_core:.2f}, "
+                f"{t('status.trend', locale=locale)}: "
+                f"{_trend_t.get(self.load_trend, self.load_trend)})"
             ),
         ]
 
@@ -171,15 +194,64 @@ class ServerSnapshot:
             ]
         )
 
-        if self.key_findings:
+        # Localized key findings from structured severity data.
+        if self.severity_entries:
+            loc_findings: list[str] = []
+            for name, points, level, value, threshold, is_ratio in self.severity_entries:
+                if points <= 0:
+                    continue
+                metric_name = _metric_t.get(name, name)
+                if name.startswith("Mount:"):
+                    mount_path = name.split(":", 1)[1]
+                    msg = t(
+                        "status.finding_mount",
+                        locale=locale,
+                        mount=mount_path,
+                        value=f"{value:.1f}",
+                    )
+                    loc_findings.append(msg)
+                elif is_ratio:
+                    key = f"status.finding_{level}_ratio"
+                    msg = t(
+                        key,
+                        locale=locale,
+                        metric=metric_name,
+                        value=f"{value:.2f}",
+                        threshold=f"{threshold:.2f}",
+                    )
+                    loc_findings.append(msg)
+                else:
+                    key = f"status.finding_{level}_pct"
+                    msg = t(
+                        key,
+                        locale=locale,
+                        metric=metric_name,
+                        value=f"{value:.1f}",
+                        threshold=f"{threshold:.1f}",
+                    )
+                    loc_findings.append(msg)
+            if loc_findings:
+                lines.append("")
+                lines.append(t("status.key_findings", locale=locale))
+                for finding in loc_findings[:3]:
+                    lines.append(f"- {finding}")
+            else:
+                lines.append("")
+                lines.append(t("status.key_findings", locale=locale))
+                lines.append(f"- {t('status.finding_all_ok', locale=locale)}")
+        elif self.key_findings:
             lines.append("")
             lines.append(t("status.key_findings", locale=locale))
             for finding in self.key_findings[:3]:
                 lines.append(f"- {finding}")
 
         lines.append("")
-        lines.append(f"{t('status.action', locale=locale)}: {self.recommended_action}")
-        lines.append(f"{t('status.watch_next', locale=locale)}: {self.watch_item}")
+        lines.append(
+            f"{t('status.action', locale=locale)}: "
+            f"{t(f'status.action_{self.health_level}', locale=locale)}"
+        )
+        watch_translated = _metric_t.get(self.watch_item, self.watch_item)
+        lines.append(f"{t('status.watch_next', locale=locale)}: {watch_translated}")
 
         if self.top_processes:
             lines.append("")
@@ -599,7 +671,7 @@ def _build_snapshot(
     load_thresholds = _thresholds_for(limits, "load")
     gpu_thresholds = _thresholds_for(limits, "gpu")
 
-    severity_points: list[tuple[str, int, str]] = [
+    severity_points: list[tuple[str, int, str, float, float, bool]] = [
         _severity_for_metric("CPU", cpu_percent, cpu_thresholds),
         _severity_for_metric("RAM", ram_percent, ram_thresholds),
         _severity_for_metric("Disk", disk_percent, disk_thresholds),
@@ -611,18 +683,11 @@ def _build_snapshot(
 
     critical_mount = top_mounts[0] if top_mounts else None
     if critical_mount and _num(critical_mount.get("percent", 0)) >= 90:
-        severity_points.append(
-            (
-                "Mount",
-                25,
-                (
-                    f"Mount {critical_mount.get('mnt_point', '?')} "
-                    f"at {_num(critical_mount.get('percent', 0)):.1f}%"
-                ),
-            )
-        )
+        mnt_point = str(critical_mount.get("mnt_point") or "?")
+        mnt_pct = _num(critical_mount.get("percent", 0))
+        severity_points.append((f"Mount:{mnt_point}", 25, "critical", mnt_pct, 90.0, False))
 
-    health_penalty = sum(points for _, points, _ in severity_points)
+    health_penalty = sum(points for _, points, *_ in severity_points)
     health_score = max(0, min(100, 100 - health_penalty))
     health_level = "good"
     if health_score <= 45:
@@ -630,7 +695,19 @@ def _build_snapshot(
     elif health_score <= 75:
         health_level = "warning"
 
-    key_findings = [detail for _, points, detail in severity_points if points > 0][:4]
+    # English key_findings for LLM context (as_llm_context_json uses these).
+    key_findings: list[str] = []
+    for name, points, level, value, threshold, is_ratio in severity_points:
+        if points <= 0:
+            continue
+        if name.startswith("Mount:"):
+            mount_path = name.split(":", 1)[1]
+            key_findings.append(f"Mount {mount_path} at {value:.1f}%")
+        elif is_ratio:
+            key_findings.append(f"{name} {level} at {value:.2f} (>= {threshold:.2f})")
+        else:
+            key_findings.append(f"{name} {level} at {value:.1f}% (>= {threshold:.1f}%)")
+    key_findings = key_findings[:4]
     if not key_findings:
         key_findings = ["All primary metrics are within expected range"]
 
@@ -689,6 +766,7 @@ def _build_snapshot(
         key_findings=key_findings,
         recommended_action=recommended_action,
         watch_item=watch_item,
+        severity_entries=severity_points,
         top_processes=top_processes[:10],
         all_network_interfaces=network,
         all_containers=containers,
@@ -984,26 +1062,26 @@ def _severity_for_metric(
     name: str,
     value: float,
     thresholds: tuple[float, float],
-) -> tuple[str, int, str]:
+) -> tuple[str, int, str, float, float, bool]:
     warning, critical = thresholds
     if value >= critical:
-        return name, 25, f"{name} critical at {value:.1f}% (>= {critical:.1f}%)"
+        return name, 25, "critical", value, critical, False
     if value >= warning:
-        return name, 10, f"{name} high at {value:.1f}% (>= {warning:.1f}%)"
-    return name, 0, f"{name} normal"
+        return name, 10, "high", value, warning, False
+    return name, 0, "normal", value, 0.0, False
 
 
 def _severity_for_ratio(
     name: str,
     value: float,
     thresholds: tuple[float, float],
-) -> tuple[str, int, str]:
+) -> tuple[str, int, str, float, float, bool]:
     warning, critical = thresholds
     if value >= critical:
-        return name, 25, f"{name} critical at {value:.2f} (>= {critical:.2f})"
+        return name, 25, "critical", value, critical, True
     if value >= warning:
-        return name, 10, f"{name} high at {value:.2f} (>= {warning:.2f})"
-    return name, 0, f"{name} normal"
+        return name, 10, "high", value, warning, True
+    return name, 0, "normal", value, 0.0, True
 
 
 def _history_values(payload: object, key: str) -> list[float]:
