@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.10] - 2026-03-22
+
+### Changed
+
+- **Glances data fetching**: replaced 21 individual endpoint requests with a single `GET /all` call plus `/all/limits` and 3 history endpoints. Reduces HTTP round-trips from 22 to 5 and guarantees temporal consistency across metrics.
+- **Enriched LLM context** (`as_llm_context_json`): payload now includes all containers (name/status/CPU/RAM/IO), all filesystem mounts, all active network interfaces with RX/TX rates, all sensors (label/value/unit/warning/critical), disk I/O rates, system info (hostname/OS/distro), and top 10 processes with full detail.
+- **ServerSnapshot** dataclass extended with `all_network_interfaces`, `all_containers`, `all_sensors`, `all_diskio`, and `system_info` fields.
+- **Docker Glances service** is now optional and commented out in `docker-compose.yml`. Host-based Glances is the recommended setup.
+- Top mounts and top processes limits increased from 3/5 to all mounts and top 10 processes respectively.
+
+### Removed
+
+- `_ENDPOINTS` tuple, `_CRITICAL_ENDPOINT_KEYS` frozenset, and `_max_concurrency()` function — no longer needed with `/all`.
+- `_fetch_all()` semaphore-based parallel fetch function — replaced by direct `/all` request.
+- `GLANCES_MAX_CONCURRENCY` environment variable from config, Docker Compose, `.env.example`, and README.
+- `os` import dependency from `glances.py`.
+
 ## [0.0.9] - 2026-03-20
 
 ### Added

@@ -1,7 +1,10 @@
 """Async client for the Glances REST API v4.
 
-Only the endpoints needed for the bot are implemented.
-All functions raise httpx.HTTPError on connectivity / HTTP errors.
+Fetches the full server state via ``GET /all`` in a single request
+and builds a ``ServerSnapshot`` from the aggregated payload.
+
+Individual endpoints are still used for on-demand detail requests
+from the ``/glances`` menu.
 """
 
 from __future__ import annotations
@@ -9,9 +12,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
@@ -30,55 +32,18 @@ _client_lock = asyncio.Lock()
 
 
 def _request_timeout() -> float:
-    """Per-request timeout for individual Glances endpoints."""
+    """Per-request timeout for Glances API calls."""
     return get_config().glances_request_timeout_seconds
 
 
-def _max_concurrency() -> int:
-    """Maximum number of in-flight Glances requests for one snapshot."""
-    raw = os.getenv("GLANCES_MAX_CONCURRENCY", "4")
-    try:
-        return max(1, int(raw))
-    except ValueError:
-        return 4
-
-
-_ENDPOINTS: tuple[tuple[str, str], ...] = (
-    ("status", "/status"),
-    ("cpu", "/cpu"),
-    ("load", "/load"),
-    ("mem", "/mem"),
-    ("memswap", "/memswap"),
-    ("fs", "/fs"),
-    ("processcount", "/processcount"),
-    ("uptime", "/uptime"),
-    ("diskio", "/diskio"),
-    ("network", "/network"),
-    ("containers", "/containers"),
-    ("processlist", "/processlist/top/10"),
-    ("sensors", "/sensors"),
-    ("system", "/system"),
-    ("core", "/core"),
-    ("version", "/version"),
-    ("pluginslist", "/pluginslist"),
-    ("gpu", "/gpu"),
-    ("limits", "/all/limits"),
+# History endpoints — not included in /all so fetched separately.
+_HISTORY_ENDPOINTS: tuple[tuple[str, str], ...] = (
     ("cpu_history", "/cpu/total/history/3"),
     ("mem_history", "/mem/percent/history/3"),
     ("load_history", "/load/min1/history/3"),
 )
 
-_CRITICAL_ENDPOINT_KEYS: frozenset[str] = frozenset(
-    {
-        "cpu",
-        "mem",
-        "fs",
-        "load",
-        "processcount",
-        "uptime",
-    }
-)
-
+# On-demand detail endpoints for the /glances interactive menu.
 _DETAIL_ENDPOINTS: dict[str, str] = {
     "cpu": "/cpu",
     "mem": "/mem",
@@ -136,7 +101,12 @@ class ServerSnapshot:
     recommended_action: str
     watch_item: str
     top_processes: list[dict[str, object]]
-    raw_all: dict[str, object]
+    all_network_interfaces: list[dict[str, object]] = field(default_factory=list)
+    all_containers: list[dict[str, object]] = field(default_factory=list)
+    all_sensors: list[dict[str, object]] = field(default_factory=list)
+    all_diskio: list[dict[str, object]] = field(default_factory=list)
+    system_info: dict[str, object] = field(default_factory=dict)
+    raw_all: dict[str, object] = field(default_factory=dict)
 
     def as_text(self, locale: str = "en") -> str:
         """Return a compact, operationally-oriented multi-line text representation."""
@@ -235,7 +205,111 @@ class ServerSnapshot:
         return json.dumps(self.raw_all, ensure_ascii=True)
 
     def as_llm_context_json(self) -> str:
-        """Return a compact JSON payload optimized for LLM reasoning latency."""
+        """Return a rich JSON payload with all available server data for LLM reasoning."""
+
+        # --- processes: top 10 with full detail ---
+        llm_processes = []
+        for proc in self.top_processes[:10]:
+            llm_processes.append(
+                {
+                    "name": proc.get("name") or "?",
+                    "pid": proc.get("pid"),
+                    "cpu_percent": _round(proc.get("cpu_percent", 0)),
+                    "memory_percent": _round(proc.get("memory_percent", 0)),
+                    "status": proc.get("status"),
+                    "username": proc.get("username"),
+                    "num_threads": proc.get("num_threads"),
+                }
+            )
+
+        # --- all mounts ---
+        llm_mounts = []
+        for mount in self.top_mounts:
+            llm_mounts.append(
+                {
+                    "mnt_point": mount.get("mnt_point") or "?",
+                    "device_name": mount.get("device_name") or "?",
+                    "percent": _round(mount.get("percent", 0)),
+                    "used_gb": _round(mount.get("used_gb", 0)),
+                    "total_gb": _round(mount.get("total_gb", 0)),
+                }
+            )
+
+        # --- all network interfaces ---
+        llm_network = []
+        for iface in self.all_network_interfaces:
+            name = iface.get("interface_name") or "?"
+            if str(name) == "lo":
+                continue
+            llm_network.append(
+                {
+                    "interface": name,
+                    "is_up": iface.get("is_up"),
+                    "speed_mbps": iface.get("speed"),
+                    "rx_bps": _round(iface.get("bytes_recv_rate_per_sec", 0)),
+                    "tx_bps": _round(iface.get("bytes_sent_rate_per_sec", 0)),
+                    "rx_total": iface.get("bytes_recv_gauge"),
+                    "tx_total": iface.get("bytes_sent_gauge"),
+                }
+            )
+
+        # --- all containers ---
+        llm_containers = []
+        for container in self.all_containers:
+            llm_containers.append(
+                {
+                    "name": container.get("name") or "?",
+                    "status": container.get("status"),
+                    "cpu_percent": _round(container.get("cpu_percent", 0)),
+                    "memory_usage": container.get("memory_usage"),
+                    "memory_limit": container.get("memory_limit"),
+                    "io_rx": container.get("io_rx"),
+                    "io_wx": container.get("io_wx"),
+                    "network_rx": container.get("network_rx"),
+                    "network_tx": container.get("network_tx"),
+                }
+            )
+
+        # --- all sensors ---
+        llm_sensors = []
+        for sensor in self.all_sensors:
+            llm_sensors.append(
+                {
+                    "label": sensor.get("label") or "?",
+                    "type": sensor.get("type"),
+                    "value": _round(sensor.get("value", 0)),
+                    "unit": sensor.get("unit"),
+                    "warning": sensor.get("warning"),
+                    "critical": sensor.get("critical"),
+                }
+            )
+
+        # --- disk IO ---
+        llm_diskio = []
+        for disk in self.all_diskio:
+            llm_diskio.append(
+                {
+                    "disk_name": disk.get("disk_name") or "?",
+                    "read_bytes_rate": _round(disk.get("read_bytes_rate_per_sec", 0)),
+                    "write_bytes_rate": _round(disk.get("write_bytes_rate_per_sec", 0)),
+                    "read_count_rate": _round(disk.get("read_count_rate_per_sec", 0)),
+                    "write_count_rate": _round(disk.get("write_count_rate_per_sec", 0)),
+                }
+            )
+
+        # --- GPU ---
+        gpu_info: dict[str, object] = {"available": self.gpu_available}
+        if self.gpu_available:
+            gpu_info.update(
+                {
+                    "count": self.gpu_count,
+                    "name": self.gpu_name,
+                    "util_percent": round(self.gpu_util_percent, 2),
+                    "vram_percent": round(self.gpu_mem_percent, 2),
+                    "temp_c": round(self.gpu_temp_c, 2),
+                }
+            )
+
         payload: dict[str, object] = {
             "health": {
                 "score": self.health_score,
@@ -244,56 +318,59 @@ class ServerSnapshot:
                 "recommended_action": self.recommended_action,
                 "watch_next": self.watch_item,
             },
-            "core": {
-                "cpu_percent": round(self.cpu_percent, 2),
-                "ram_percent": round(self.ram_percent, 2),
-                "disk_percent": round(self.disk_percent, 2),
-                "swap_percent": round(self.swap_percent, 2),
-                "load": {
-                    "min1": round(self.load_1, 3),
-                    "min5": round(self.load_5, 3),
-                    "min15": round(self.load_15, 3),
-                    "per_core": round(self.load_per_core, 3),
-                },
-                "trends": {
-                    "cpu": self.cpu_trend,
-                    "ram": self.ram_trend,
-                    "load": self.load_trend,
-                },
+            "cpu": {
+                "percent": round(self.cpu_percent, 2),
+                "trend": self.cpu_trend,
+            },
+            "ram": {
+                "percent": round(self.ram_percent, 2),
+                "used_gb": round(self.ram_used_gb, 2),
+                "total_gb": round(self.ram_total_gb, 2),
+                "trend": self.ram_trend,
+            },
+            "swap": {
+                "percent": round(self.swap_percent, 2),
+                "used_gb": round(self.swap_used_gb, 2),
+                "total_gb": round(self.swap_total_gb, 2),
+            },
+            "load": {
+                "min1": round(self.load_1, 3),
+                "min5": round(self.load_5, 3),
+                "min15": round(self.load_15, 3),
+                "per_core": round(self.load_per_core, 3),
+                "trend": self.load_trend,
+            },
+            "storage": {
+                "root_percent": round(self.disk_percent, 2),
+                "root_used_gb": round(self.disk_used_gb, 2),
+                "root_total_gb": round(self.disk_total_gb, 2),
+                "all_mounts": llm_mounts,
+            },
+            "disk_io": llm_diskio,
+            "network": {
+                "top_interface": self.network_top_interface,
+                "all_interfaces": llm_network,
             },
             "processes": {
                 "running": self.process_running,
                 "total": self.process_total,
-                "top_cpu": self.top_processes[:5],
-            },
-            "storage": {
-                "root_percent": round(self.disk_percent, 2),
-                "top_mounts": self.top_mounts[:3],
-            },
-            "network": {
-                "interface": self.network_top_interface,
-                "rx_bps": round(self.network_rx_bps, 2),
-                "tx_bps": round(self.network_tx_bps, 2),
-            },
-            "gpu": {
-                "available": self.gpu_available,
-                "count": self.gpu_count,
-                "name": self.gpu_name,
-                "util_percent": round(self.gpu_util_percent, 2),
-                "vram_percent": round(self.gpu_mem_percent, 2),
-                "temp_c": round(self.gpu_temp_c, 2),
+                "top": llm_processes,
             },
             "containers": {
                 "running": self.docker_running,
                 "total": self.docker_total,
+                "all": llm_containers,
             },
+            "gpu": gpu_info,
+            "sensors": llm_sensors,
+            "system": self.system_info,
             "uptime": self.uptime,
         }
         return json.dumps(payload, ensure_ascii=True)
 
 
 async def get_snapshot() -> ServerSnapshot:
-    """Fetch Glances metrics from individual endpoints and return a snapshot.
+    """Fetch Glances metrics via ``/all`` and return a snapshot.
 
     Results are cached for _SNAPSHOT_TTL seconds to avoid redundant HTTP
     calls when multiple parts of the bot query metrics in quick succession.
@@ -363,41 +440,59 @@ async def get_live_endpoint_detail(key: str) -> object:
 
 
 async def _fetch_snapshot() -> ServerSnapshot:
-    """Internal: always performs live HTTP requests to Glances."""
+    """Fetch the full Glances state via /all and build a ServerSnapshot."""
     cfg = get_config()
-
     client = await _get_client()
-    payload = await _fetch_all(client, cfg.glances_base_url)
+    base_url = cfg.glances_base_url
 
-    endpoint_errors = {
-        key: value
-        for key, value in payload.items()
-        if isinstance(value, dict) and "_error" in value
-    }
-    if endpoint_errors:
-        failed = len(endpoint_errors)
-        total = len(_ENDPOINTS)
-        failed_keys = ", ".join(sorted(endpoint_errors.keys()))
-        if failed == total:
-            raise RuntimeError(f"All Glances endpoint requests failed ({failed_keys})")
-        critical_failed = sorted(set(endpoint_errors.keys()) & _CRITICAL_ENDPOINT_KEYS)
-        if critical_failed:
-            raise RuntimeError(
-                "Critical Glances endpoints failed "
-                f"({', '.join(critical_failed)}); snapshot considered unavailable"
-            )
-        logger.warning(
-            "Glances partial endpoint failure (%s/%s): %s",
-            failed,
-            total,
-            failed_keys,
-        )
+    # Main payload — single request for all plugins.
+    payload = await _get_json_with_fallback(client, base_url, "/all")
+    if not isinstance(payload, dict):
+        raise RuntimeError("Glances /all response is not a JSON object")
+
+    # Limits — needed for health scoring thresholds.
+    try:
+        limits_raw = await _get_json_with_fallback(client, base_url, "/all/limits")
+    except Exception:
+        logger.warning("Could not fetch Glances /all/limits; using defaults")
+        limits_raw = {}
+
+    # History endpoints — fetched in parallel (small payloads).
+    history_results = await asyncio.gather(
+        *(_safe_fetch(client, base_url, path) for _, path in _HISTORY_ENDPOINTS),
+        return_exceptions=False,
+    )
+    history: dict[str, object] = {}
+    for (key, _), result in zip(_HISTORY_ENDPOINTS, history_results, strict=False):
+        history[key] = result
 
     if cfg.glances_log_full_payload:
-        logger.info("Glances aggregated payload: %s", json.dumps(payload, ensure_ascii=True))
+        logger.info("Glances /all payload: %s", json.dumps(payload, ensure_ascii=True))
     else:
-        logger.debug("Glances aggregated payload keys: %s", ", ".join(sorted(payload.keys())))
+        logger.debug("Glances /all payload keys: %s", ", ".join(sorted(payload.keys())))
 
+    return _build_snapshot(payload, _as_dict(limits_raw), history)
+
+
+async def _safe_fetch(
+    client: httpx.AsyncClient,
+    base_url: str,
+    path: str,
+) -> object:
+    """Fetch one endpoint, returning empty dict on failure."""
+    try:
+        return await _get_json_with_fallback(client, base_url, path)
+    except Exception:
+        logger.debug("Optional endpoint %s failed; skipping", path)
+        return {}
+
+
+def _build_snapshot(
+    payload: dict[str, object],
+    limits: dict[str, object],
+    history: dict[str, object],
+) -> ServerSnapshot:
+    """Parse an /all payload dict into a ServerSnapshot."""
     cpu = _as_dict(payload.get("cpu"))
     mem = _as_dict(payload.get("mem"))
     memswap = _as_dict(payload.get("memswap"))
@@ -412,11 +507,13 @@ async def _fetch_snapshot() -> ServerSnapshot:
     network = _as_list_of_dicts(payload.get("network"))
     gpu_payload = payload.get("gpu")
     gpus = _normalize_gpu_list(gpu_payload)
-    limits = _as_dict(payload.get("limits"))
+    sensors = _as_list_of_dicts(payload.get("sensors"))
+    diskio = _as_list_of_dicts(payload.get("diskio"))
+    system = _as_dict(payload.get("system"))
 
-    cpu_history = _history_values(payload.get("cpu_history"), "total")
-    mem_history = _history_values(payload.get("mem_history"), "percent")
-    load_history = _history_values(payload.get("load_history"), "min1")
+    cpu_history = _history_values(history.get("cpu_history"), "total")
+    mem_history = _history_values(history.get("mem_history"), "percent")
+    load_history = _history_values(history.get("load_history"), "min1")
 
     gb = 1024**3
 
@@ -428,7 +525,7 @@ async def _fetch_snapshot() -> ServerSnapshot:
     disk_size = _num(disk.get("size", 1))
     disk_percent = _num(disk.get("percent", 0.0))
 
-    docker_running = sum(1 for container in containers if container.get("status") == "running")
+    docker_running = sum(1 for c in containers if c.get("status") == "running")
 
     top_mounts = sorted(
         [
@@ -483,10 +580,18 @@ async def _fetch_snapshot() -> ServerSnapshot:
 
     top_processes = sorted(
         processes,
-        key=lambda proc: _num(proc.get("cpu_percent", 0)),
+        key=lambda p: _num(p.get("cpu_percent", 0)),
         reverse=True,
     )
 
+    # --- System info for LLM context ---
+    system_info: dict[str, object] = {}
+    for key in ("hostname", "os_name", "os_version", "platform", "linux_distro", "hr_name"):
+        val = system.get(key)
+        if val is not None:
+            system_info[key] = val
+
+    # --- Health scoring ---
     cpu_thresholds = _thresholds_for(limits, "cpu", item="total")
     ram_thresholds = _thresholds_for(limits, "mem")
     disk_thresholds = _thresholds_for(limits, "fs")
@@ -575,7 +680,7 @@ async def _fetch_snapshot() -> ServerSnapshot:
         gpu_util_percent=gpu_util_percent,
         gpu_mem_percent=gpu_mem_percent,
         gpu_temp_c=gpu_temp_c,
-        top_mounts=top_mounts[:3],
+        top_mounts=top_mounts,
         cpu_trend=_trend_label(cpu_history),
         ram_trend=_trend_label(mem_history),
         load_trend=_trend_label(load_history),
@@ -584,31 +689,14 @@ async def _fetch_snapshot() -> ServerSnapshot:
         key_findings=key_findings,
         recommended_action=recommended_action,
         watch_item=watch_item,
-        top_processes=top_processes[:5],
+        top_processes=top_processes[:10],
+        all_network_interfaces=network,
+        all_containers=containers,
+        all_sensors=sensors,
+        all_diskio=diskio,
+        system_info=system_info,
         raw_all=payload,
     )
-
-
-async def _fetch_all(client: httpx.AsyncClient, base_url: str) -> dict[str, object]:
-    """Fetch all Glances endpoints concurrently and aggregate responses.
-
-    The flow intentionally waits for every endpoint request to complete (or fail
-    by per-request timeout) before returning. This avoids cutting pending calls
-    mid-flight and guarantees a complete best-effort bundle for the LLM context.
-    """
-
-    semaphore = asyncio.Semaphore(_max_concurrency())
-
-    async def _fetch_endpoint(key: str, path: str) -> tuple[str, object]:
-        async with semaphore:
-            try:
-                payload = await _get_json_with_fallback(client, base_url, path)
-                return key, payload
-            except Exception as exc:  # noqa: BLE001
-                return key, {"_error": repr(exc), "_endpoint": path}
-
-    results = await asyncio.gather(*(_fetch_endpoint(key, path) for key, path in _ENDPOINTS))
-    return {key: value for key, value in results}
 
 
 def _base_url_candidates(base_url: str) -> tuple[str, ...]:
@@ -622,7 +710,6 @@ def _base_url_candidates(base_url: str) -> tuple[str, ...]:
     else:
         fallback_netloc = f"host.docker.internal:{parsed.port}"
 
-    # Preserve credentials if the user configured them.
     if parsed.username:
         userinfo = parsed.username
         if parsed.password:
@@ -644,13 +731,7 @@ def _base_url_candidates(base_url: str) -> tuple[str, ...]:
 
 
 def _normalize_base_url(base_url: str) -> str:
-    """Normalize Glances base URL to include the API v4 prefix.
-
-    Examples:
-      - http://192.168.1.20:61208 -> http://192.168.1.20:61208/api/4
-      - http://host:61208/api -> http://host:61208/api/4
-      - http://host:61208/api/4 -> unchanged
-    """
+    """Normalize Glances base URL to include the API v4 prefix."""
     primary = base_url.strip().rstrip("/")
     parsed = urlsplit(primary)
 
@@ -714,11 +795,10 @@ async def _get_json_with_fallback(
             last_error = exc
             elapsed_ms = (time.perf_counter() - started_at) * 1000
             logger.warning(
-                "Glances connect error endpoint=%s url=%s elapsed_ms=%.1f error_type=%s error=%r",
+                "Glances connect error endpoint=%s url=%s elapsed_ms=%.1f error=%r",
                 path,
                 _safe_url_for_logs(url),
                 elapsed_ms,
-                type(exc).__name__,
                 exc,
             )
             is_last = index == len(candidates) - 1
@@ -733,11 +813,10 @@ async def _get_json_with_fallback(
             last_error = exc
             elapsed_ms = (time.perf_counter() - started_at) * 1000
             logger.warning(
-                "Glances timeout endpoint=%s url=%s elapsed_ms=%.1f error_type=%s error=%r",
+                "Glances timeout endpoint=%s url=%s elapsed_ms=%.1f error=%r",
                 path,
                 _safe_url_for_logs(url),
                 elapsed_ms,
-                type(exc).__name__,
                 exc,
             )
             raise
@@ -746,15 +825,11 @@ async def _get_json_with_fallback(
             elapsed_ms = (time.perf_counter() - started_at) * 1000
             status = exc.response.status_code if exc.response is not None else "n/a"
             logger.warning(
-                (
-                    "Glances HTTP error endpoint=%s url=%s status=%s "
-                    "elapsed_ms=%.1f error_type=%s error=%r"
-                ),
+                "Glances HTTP error endpoint=%s url=%s status=%s elapsed_ms=%.1f error=%r",
                 path,
                 _safe_url_for_logs(url),
                 status,
                 elapsed_ms,
-                type(exc).__name__,
                 exc,
             )
             raise
@@ -762,14 +837,10 @@ async def _get_json_with_fallback(
             last_error = exc
             elapsed_ms = (time.perf_counter() - started_at) * 1000
             logger.warning(
-                (
-                    "Glances unexpected error endpoint=%s url=%s "
-                    "elapsed_ms=%.1f error_type=%s error=%r"
-                ),
+                "Glances unexpected error endpoint=%s url=%s elapsed_ms=%.1f error=%r",
                 path,
                 _safe_url_for_logs(url),
                 elapsed_ms,
-                type(exc).__name__,
                 exc,
             )
             raise
@@ -777,6 +848,11 @@ async def _get_json_with_fallback(
     if last_error is not None:
         raise last_error
     raise RuntimeError("No Glances base URL candidates available")
+
+
+def _round(value: object) -> float:
+    """Round a numeric value to 2 decimal places."""
+    return round(_num(value), 2)
 
 
 def _num(value: object) -> float:
@@ -872,7 +948,6 @@ def _normalize_gpu_list(payload: object) -> list[dict[str, object]]:
         if nested:
             return nested
 
-    # Some integrations expose a single GPU object as a dict.
     if data:
         return [data]
     return []

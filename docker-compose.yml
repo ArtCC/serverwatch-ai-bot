@@ -6,9 +6,10 @@ services:
     environment:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
+      # For host-based Glances (recommended): http://<host-ip>:61208/api/4
+      # For Docker-based Glances: http://glances:61208/api/4
       GLANCES_BASE_URL: ${GLANCES_BASE_URL:-http://glances:61208/api/4}
       GLANCES_REQUEST_TIMEOUT_SECONDS: ${GLANCES_REQUEST_TIMEOUT_SECONDS:-10.0}
-      GLANCES_MAX_CONCURRENCY: ${GLANCES_MAX_CONCURRENCY:-4}
       GLANCES_LOG_FULL_PAYLOAD: ${GLANCES_LOG_FULL_PAYLOAD:-false}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:3b}
@@ -33,37 +34,39 @@ services:
       CHAT_CONTEXT_MAX_TURNS: ${CHAT_CONTEXT_MAX_TURNS:-8}
       CHAT_CONTEXT_MAX_CHARS: ${CHAT_CONTEXT_MAX_CHARS:-10000}
       CHAT_CONTEXT_RETENTION_MESSAGES: ${CHAT_CONTEXT_RETENTION_MESSAGES:-200}
-    depends_on:
-      glances:
-        condition: service_started
+    # Uncomment depends_on if using the Docker-based Glances service below.
+    # depends_on:
+    #   glances:
+    #     condition: service_started
     volumes:
       - ${DATA_PATH:-/opt/docker/serverwatch-ai-bot/data}:/app/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
-  glances:
-    image: nicolargo/glances:latest
-    container_name: serverwatch-glances
-    restart: unless-stopped
-    pid: host
-    # Needed in regular `docker compose` mode for NVIDIA GPU visibility.
-    gpus: all
-    environment:
-      GLANCES_OPT: "-w"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      # Uncomment to show host OS details instead of container OS details
-      # - /etc/os-release:/etc/os-release:ro
-    devices:
-      # Needed for Intel iGPU telemetry (e.g. /dev/dri/renderD128).
-      - /dev/dri:/dev/dri
-    ports:
-      - "127.0.0.1:61208:61208"
-    # For nvidia GPUs
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+  # ─── Optional: Docker-based Glances ────────────────────────────────
+  # Uncomment the block below if you prefer running Glances inside Docker
+  # instead of on the host.  When using host-based Glances (recommended),
+  # point GLANCES_BASE_URL to your host IP and leave this block commented.
+  #
+  # glances:
+  #   image: nicolargo/glances:latest
+  #   container_name: serverwatch-glances
+  #   restart: unless-stopped
+  #   pid: host
+  #   gpus: all
+  #   environment:
+  #     GLANCES_OPT: "-w"
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock:ro
+  #     # - /etc/os-release:/etc/os-release:ro
+  #   devices:
+  #     - /dev/dri:/dev/dri
+  #   ports:
+  #     - "127.0.0.1:61208:61208"
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             count: 1
+  #             capabilities: [gpu]

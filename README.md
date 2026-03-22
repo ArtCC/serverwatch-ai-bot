@@ -26,59 +26,49 @@ so follow-up questions keep continuity without unbounded prompt growth.
 
 ## Glances usage
 
-The bot uses the Glances REST API v4 (`GLANCES_BASE_URL`) and currently fetches
-metrics through individual endpoints (not `/all`) to keep requests focused and
-reduce prompt size.
+The bot uses the Glances REST API v4 (`GLANCES_BASE_URL`) and fetches all server
+metrics in a single `GET /all` request, plus `/all/limits` for threshold data
+and three lightweight history endpoints for trend analysis.
 
-The metrics pipeline now includes three layers:
+**Recommended setup**: run Glances directly on the host (`glances -w`) and point
+`GLANCES_BASE_URL` to its address.  This gives full access to hardware data
+(GPU, sensors, all disks) without Docker isolation issues.  If you prefer
+running Glances inside Docker, see the commented service block in
+`docker-compose.yml`.
 
-- `Snapshot layer`: live endpoint fetch with short cache (`10s`) and fallback host resolution.
+The metrics pipeline includes three layers:
+
+- `Snapshot layer`: single `/all` fetch with short cache (`10s`) and fallback host resolution.
 - `Operational layer`: health score (`0-100`), severity (`good|warning|critical`), key findings,
   and next-action hints built from thresholds + live values.
-- `AI context layer`: compact JSON payload for chat prompts (high signal, low noise).
+- `AI context layer`: rich structured JSON payload with all containers (name/status/CPU/RAM/IO),
+  all mounts, all active network interfaces (RX/TX), sensors, disk I/O rates, system info,
+  GPU state, and top 10 processes.
 
-When metrics are requested (`/status`, refresh button, or free-text chat), the
-bot queries this fixed bundle in parallel:
+Endpoints used per snapshot:
 
-- `/status`
-- `/cpu`
-- `/load`
-- `/mem`
-- `/memswap`
-- `/fs`
-- `/processcount`
-- `/uptime`
-- `/diskio`
-- `/network`
-- `/containers`
-- `/processlist/top/10`
-- `/sensors`
-- `/system`
-- `/core`
-- `/version`
-- `/pluginslist`
-- `/gpu`
-- `/all/limits`
-- `/cpu/total/history/3`
-- `/mem/percent/history/3`
-- `/load/min1/history/3`
+| Endpoint | Purpose |
+|---|---|
+| `/all` | Full server state (single request) |
+| `/all/limits` | Warning/critical thresholds for health scoring |
+| `/cpu/total/history/3` | CPU trend (last 3 samples) |
+| `/mem/percent/history/3` | RAM trend (last 3 samples) |
+| `/load/min1/history/3` | Load trend (last 3 samples) |
+
+The `/glances` interactive menu still fetches individual detail endpoints on
+demand (`/cpu`, `/mem`, `/fs`, `/gpu`, `/sensors`, etc.).
 
 Notes:
 
-- Base URL example: `http://glances:61208/api/4`
-- Glances auth is optional in this setup (works without auth if Glances is not
-  started with `--password`)
-- By default, the bot logs only aggregated payload keys at `DEBUG` level.
-- Set `GLANCES_LOG_FULL_PAYLOAD=true` to log the full aggregated Glances JSON
-  at `INFO` level for diagnostics (for example in container logs).
-- For GPU telemetry in Docker, Glances must have runtime device access:
-  `gpus: all` for NVIDIA and `/dev/dri` mapping for Intel iGPU.
-- `/status` now prioritizes operational value: trends, top bottlenecks, recommended action,
-  what to watch next, and top GPU usage when available.
-- Free-text AI chat now uses compact status context (`as_llm_context_json`) instead of the
-  full raw bundle to improve latency and reduce prompt noise.
-- Scheduler alerts include classic metric threshold alarms plus a global health alert
-  when the operational score degrades to warning/critical.
+- Base URL example: `http://192.168.1.10:61208/api/4`
+- Glances auth is optional (works without auth if Glances is not started with
+  `--password`).
+- Set `GLANCES_LOG_FULL_PAYLOAD=true` to log the full `/all` JSON at `INFO`
+  level for diagnostics.
+- For GPU telemetry, Glances needs runtime device access. When running on the
+  host this works automatically.
+- Scheduler alerts include classic metric threshold alarms plus a global health
+  alert when the operational score degrades to warning/critical.
 
 ## Commands
 
@@ -151,9 +141,8 @@ Notes:
 | `TELEGRAM_BOT_TOKEN` | ✅ | — | Token from BotFather |
 | `TELEGRAM_CHAT_ID` | ✅ | — | Authorized chat ID |
 | `GLANCES_BASE_URL` | | `http://glances:61208/api/4` | Glances API base URL |
-| `GLANCES_REQUEST_TIMEOUT_SECONDS` | | `8.0` | Per-endpoint Glances request timeout |
-| `GLANCES_MAX_CONCURRENCY` | | `4` | Max simultaneous Glances endpoint requests from the bot |
-| `GLANCES_LOG_FULL_PAYLOAD` | | `false` | Log full aggregated Glances payload at `INFO` |
+| `GLANCES_REQUEST_TIMEOUT_SECONDS` | | `8.0` | Glances HTTP request timeout |
+| `GLANCES_LOG_FULL_PAYLOAD` | | `false` | Log full `/all` Glances payload at `INFO` |
 | `OLLAMA_BASE_URL` | | `http://host.docker.internal:11434` | Ollama API base URL |
 | `OLLAMA_MODEL` | | `llama3.2:3b` | Default Ollama model |
 | `OPENAI_API_KEY` | | — | Optional OpenAI API key |

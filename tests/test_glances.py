@@ -1,43 +1,72 @@
 from __future__ import annotations
 
 import asyncio
-import time
 from urllib.parse import urlsplit
 
 import httpx
 
 from app.services.glances import (
-    _ENDPOINTS,
+    _HISTORY_ENDPOINTS,
     _base_url_candidates,
-    _fetch_all,
+    _build_snapshot,
     _get_json_with_fallback,
     _normalize_base_url,
     _normalize_gpu_list,
     _num,
     _pick_top_gpu,
     _pick_top_network_interface,
+    _round,
     _severity_for_metric,
     _severity_for_ratio,
     _thresholds_for,
     _trend_label,
 )
 
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
-def test_gpu_endpoint_is_registered() -> None:
-    endpoints = dict(_ENDPOINTS)
-    assert endpoints["gpu"] == "/gpu"
+
+def _minimal_all_payload() -> dict[str, object]:
+    """Return a minimal /all-style payload for building a snapshot."""
+    return {
+        "cpu": {"total": 25.0},
+        "mem": {"percent": 40.0, "used": 4 * 1024**3, "total": 16 * 1024**3},
+        "memswap": {"percent": 5.0, "used": 0, "total": 2 * 1024**3},
+        "fs": [{"mnt_point": "/", "percent": 55.0, "used": 50 * 1024**3, "size": 100 * 1024**3}],
+        "load": {"min1": 1.5, "min5": 1.2, "min15": 1.0, "cpucore": 4},
+        "core": {"log": 4},
+        "processcount": {"total": 200, "running": 3},
+        "uptime": "3 days",
+        "containers": [{"name": "bot", "status": "running"}],
+        "processlist": [
+            {"name": "python", "cpu_percent": 12.0, "memory_percent": 3.5, "pid": 1},
+        ],
+        "network": [
+            {
+                "interface_name": "eth0",
+                "bytes_recv_rate_per_sec": 1000,
+                "bytes_sent_rate_per_sec": 500,
+                "is_up": True,
+            }
+        ],
+        "gpu": [],
+        "sensors": [{"label": "Core 0", "value": 55, "unit": "C", "type": "temperature_core"}],
+        "diskio": [
+            {
+                "disk_name": "sda",
+                "read_bytes_rate_per_sec": 100,
+                "write_bytes_rate_per_sec": 200,
+            }
+        ],
+        "system": {"hostname": "myhost", "os_name": "Linux"},
+    }
 
 
 class _FakeResponse:
-    def __init__(self, payload: object, delay: float = 0.0, should_fail: bool = False) -> None:
+    def __init__(self, payload: object, should_fail: bool = False) -> None:
         self._payload = payload
-        self._delay = delay
         self._should_fail = should_fail
-
-    async def wait(self) -> _FakeResponse:
-        if self._delay > 0:
-            await asyncio.sleep(self._delay)
-        return self
 
     def raise_for_status(self) -> None:
         if self._should_fail:
@@ -50,10 +79,8 @@ class _FakeResponse:
 class _FakeAsyncClient:
     def __init__(
         self,
-        delays: dict[str, float] | None = None,
         failing_hosts: set[str] | None = None,
     ) -> None:
-        self._delays = delays
         self._failing_hosts = failing_hosts or set()
 
     async def get(self, url: str) -> _FakeResponse:
@@ -68,26 +95,59 @@ class _FakeAsyncClient:
         if not path.startswith("/"):
             path = f"/{path}"
 
-        response = _FakeResponse(
+        return _FakeResponse(
             payload={"endpoint": path, "host": host},
-            delay=(self._delays or {}).get(path, 0.0),
             should_fail=False,
         )
-        return await response.wait()
 
 
-def test_fetch_all_waits_for_slowest_endpoint_without_cutting_requests() -> None:
-    base_url = "http://glances:61208/api/4"
-    slow_path = "/cpu"
-    client = _FakeAsyncClient(delays={slow_path: 0.10})
+# ---------------------------------------------------------------------------
+# Tests: build_snapshot
+# ---------------------------------------------------------------------------
 
-    start = time.monotonic()
-    payload = asyncio.run(_fetch_all(client, base_url))
-    elapsed = time.monotonic() - start
 
-    assert elapsed >= 0.09
-    assert set(payload.keys()) == {key for key, _ in _ENDPOINTS}
-    assert "_error" not in payload["cpu"]
+def test_build_snapshot_from_all_payload() -> None:
+    payload = _minimal_all_payload()
+    snap = _build_snapshot(payload, {}, {})
+    assert snap.cpu_percent == 25.0
+    assert snap.ram_percent == 40.0
+    assert snap.docker_running == 1
+    assert snap.docker_total == 1
+    assert snap.uptime == "3 days"
+    assert len(snap.all_sensors) == 1
+    assert snap.system_info.get("hostname") == "myhost"
+
+
+def test_build_snapshot_includes_all_mounts() -> None:
+    payload = _minimal_all_payload()
+    payload["fs"] = [
+        {"mnt_point": "/", "percent": 55.0, "used": 50 * 1024**3, "size": 100 * 1024**3},
+        {"mnt_point": "/data", "percent": 80.0, "used": 80 * 1024**3, "size": 100 * 1024**3},
+        {"mnt_point": "/boot", "percent": 30.0, "used": 1 * 1024**3, "size": 5 * 1024**3},
+    ]
+    snap = _build_snapshot(payload, {}, {})
+    assert len(snap.top_mounts) == 3
+    assert snap.top_mounts[0]["mnt_point"] == "/data"
+
+
+def test_build_snapshot_enriched_llm_context() -> None:
+    import json
+
+    payload = _minimal_all_payload()
+    snap = _build_snapshot(payload, {}, {})
+    ctx = json.loads(snap.as_llm_context_json())
+
+    assert "cpu" in ctx
+    assert "ram" in ctx
+    assert "storage" in ctx
+    assert "disk_io" in ctx
+    assert "sensors" in ctx
+    assert "system" in ctx
+    assert "containers" in ctx
+    assert ctx["containers"]["running"] == 1
+    assert len(ctx["containers"]["all"]) == 1
+    assert ctx["system"].get("hostname") == "myhost"
+    assert len(ctx["sensors"]) == 1
 
 
 def test_base_url_candidates_add_docker_host_fallback_for_glances_service() -> None:
@@ -124,13 +184,16 @@ def test_get_json_with_fallback_accepts_base_url_without_api_path() -> None:
     assert payload.get("host") == "192.168.1.20"
 
 
-def test_fetch_all_uses_fallback_when_glances_host_cannot_resolve() -> None:
-    client = _FakeAsyncClient(failing_hosts={"glances"})
-    payload = asyncio.run(_fetch_all(client, "http://glances:61208/api/4"))
+# ---------------------------------------------------------------------------
+# Tests: history endpoints constant
+# ---------------------------------------------------------------------------
 
-    assert set(payload.keys()) == {key for key, _ in _ENDPOINTS}
-    assert "_error" not in payload["cpu"]
-    assert payload["cpu"]["host"] == "host.docker.internal"
+
+def test_history_endpoints_are_defined() -> None:
+    keys = {key for key, _ in _HISTORY_ENDPOINTS}
+    assert "cpu_history" in keys
+    assert "mem_history" in keys
+    assert "load_history" in keys
 
 
 def test_trend_label_detects_up_down_and_stable() -> None:
@@ -226,3 +289,9 @@ def test_gpu_mem_percent_can_be_derived_from_used_total_fields() -> None:
     percent = (used / total) * 100.0
 
     assert round(percent, 1) == 33.3
+
+
+def test_round_returns_two_decimal_places() -> None:
+    assert _round(3.14159) == 3.14
+    assert _round("2.999") == 3.0
+    assert _round(None) == 0.0
