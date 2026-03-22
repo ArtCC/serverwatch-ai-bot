@@ -11,6 +11,7 @@ from app.services.glances import (
     _base_url_candidates,
     _fetch_all,
     _get_json_with_fallback,
+    _normalize_base_url,
     _normalize_gpu_list,
     _num,
     _pick_top_gpu,
@@ -97,6 +98,14 @@ def test_base_url_candidates_add_docker_host_fallback_for_glances_service() -> N
     )
 
 
+def test_normalize_base_url_adds_api_prefix_when_missing() -> None:
+    assert _normalize_base_url("http://192.168.1.20:61208") == "http://192.168.1.20:61208/api/4"
+
+
+def test_normalize_base_url_expands_api_root_without_version() -> None:
+    assert _normalize_base_url("http://glances:61208/api") == "http://glances:61208/api/4"
+
+
 def test_get_json_with_fallback_retries_on_name_resolution_failure() -> None:
     client = _FakeAsyncClient(failing_hosts={"glances"})
     payload = asyncio.run(_get_json_with_fallback(client, "http://glances:61208/api/4", "/cpu"))
@@ -104,6 +113,15 @@ def test_get_json_with_fallback_retries_on_name_resolution_failure() -> None:
     assert isinstance(payload, dict)
     assert payload.get("endpoint") == "/cpu"
     assert payload.get("host") == "host.docker.internal"
+
+
+def test_get_json_with_fallback_accepts_base_url_without_api_path() -> None:
+    client = _FakeAsyncClient()
+    payload = asyncio.run(_get_json_with_fallback(client, "http://192.168.1.20:61208", "/cpu"))
+
+    assert isinstance(payload, dict)
+    assert payload.get("endpoint") == "/cpu"
+    assert payload.get("host") == "192.168.1.20"
 
 
 def test_fetch_all_uses_fallback_when_glances_host_cannot_resolve() -> None:

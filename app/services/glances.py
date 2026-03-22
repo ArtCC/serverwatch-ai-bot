@@ -46,7 +46,6 @@ _ENDPOINTS: tuple[tuple[str, str], ...] = (
     ("network", "/network"),
     ("containers", "/containers"),
     ("processlist", "/processlist/top/10"),
-    ("smart", "/smart"),
     ("sensors", "/sensors"),
     ("system", "/system"),
     ("core", "/core"),
@@ -349,6 +348,24 @@ async def _fetch_snapshot() -> ServerSnapshot:
     client = await _get_client()
     payload = await _fetch_all(client, cfg.glances_base_url)
 
+    endpoint_errors = {
+        key: value
+        for key, value in payload.items()
+        if isinstance(value, dict) and "_error" in value
+    }
+    if endpoint_errors:
+        failed = len(endpoint_errors)
+        total = len(_ENDPOINTS)
+        failed_keys = ", ".join(sorted(endpoint_errors.keys()))
+        if failed == total:
+            raise RuntimeError(f"All Glances endpoint requests failed ({failed_keys})")
+        logger.warning(
+            "Glances partial endpoint failure (%s/%s): %s",
+            failed,
+            total,
+            failed_keys,
+        )
+
     if cfg.glances_log_full_payload:
         logger.info("Glances aggregated payload: %s", json.dumps(payload, ensure_ascii=True))
     else:
@@ -565,7 +582,7 @@ async def _fetch_all(client: httpx.AsyncClient, base_url: str) -> dict[str, obje
 
 
 def _base_url_candidates(base_url: str) -> tuple[str, ...]:
-    primary = base_url.rstrip("/")
+    primary = _normalize_base_url(base_url)
     parsed = urlsplit(primary)
     if parsed.hostname != "glances":
         return (primary,)
@@ -594,6 +611,37 @@ def _base_url_candidates(base_url: str) -> tuple[str, ...]:
     if fallback == primary:
         return (primary,)
     return (primary, fallback)
+
+
+def _normalize_base_url(base_url: str) -> str:
+    """Normalize Glances base URL to include the API v4 prefix.
+
+    Examples:
+      - http://192.168.1.20:61208 -> http://192.168.1.20:61208/api/4
+      - http://host:61208/api -> http://host:61208/api/4
+      - http://host:61208/api/4 -> unchanged
+    """
+    primary = base_url.strip().rstrip("/")
+    parsed = urlsplit(primary)
+
+    path = (parsed.path or "").rstrip("/")
+    if path in {"", "/"}:
+        path = "/api/4"
+    elif path.endswith("/api"):
+        path = f"{path}/4"
+    elif "/api/" not in path:
+        path = f"{path}/api/4"
+
+    normalized = urlunsplit(
+        (
+            parsed.scheme,
+            parsed.netloc,
+            path,
+            parsed.query,
+            parsed.fragment,
+        )
+    )
+    return normalized.rstrip("/")
 
 
 def _is_name_resolution_error(exc: httpx.ConnectError) -> bool:
