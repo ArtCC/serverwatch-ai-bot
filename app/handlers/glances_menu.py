@@ -23,6 +23,7 @@ from app.core.auth import restricted
 from app.core.config import get_config
 from app.services import glances, llm_router
 from app.utils.i18n import locale_from_update, t
+from app.utils.streaming import stream_to_telegram, truncate_for_telegram
 
 logger = logging.getLogger("serverwatch")
 
@@ -49,7 +50,6 @@ _MENU_KEYS: tuple[str, ...] = (
 _TELEGRAM_MAX_TEXT_LENGTH = 4096
 _TELEGRAM_HARD_FALLBACK_LENGTH = 1000
 _MAX_DETAIL_JSON_FOR_LLM = 5000
-_STREAM_EDIT_INTERVAL_SECONDS = 0.8
 
 _DETAIL_SUMMARY_SYSTEM = """\
 You are ServerWatch, a concise server monitoring assistant.
@@ -403,45 +403,31 @@ async def _stream_summary_to_query(
     )
 
     header = t("glances.detail_header", locale=locale, label=label)
-    summary = ""
-    last_pushed = ""
-    last_edit_at = 0.0
+    raw_message = getattr(query, "message", None)
+    if raw_message is None:
+        return None
+    placeholder = cast(Message, raw_message)
 
     try:
-        async for chunk in llm_router.stream_chat(selection, system_prompt, user_prompt):
-            if not chunk:
-                continue
-            summary += chunk
-            now = time.monotonic()
-
-            candidate = summary.strip()
-            if not candidate:
-                continue
-
-            if (now - last_edit_at) < _STREAM_EDIT_INTERVAL_SECONDS and candidate == last_pushed:
-                continue
-
-            edited = await _safe_edit_detail(
-                query=query,
-                text=f"{header}\n\n{candidate}",
-                reply_markup=keyboard,
-            )
-            if not edited:
-                return None
-            last_pushed = candidate
-            last_edit_at = now
+        result = await stream_to_telegram(
+            stream=llm_router.stream_chat_events(selection, system_prompt, user_prompt),
+            placeholder=placeholder,
+            prefix=header,
+            stream_keyboard=keyboard,
+        )
     except Exception:
         logger.exception("Could not stream Glances detail summary for key=%s", key)
         return None
 
-    final_text = summary.strip()
+    final_text = result.answer.strip()
     if not final_text:
         return None
 
-    if final_text != last_pushed:
+    display = truncate_for_telegram(f"{header}\n\n{final_text}")
+    if display != result.last_pushed_text:
         edited = await _safe_edit_detail(
             query=query,
-            text=f"{header}\n\n{final_text}",
+            text=display,
             reply_markup=keyboard,
         )
         if not edited:

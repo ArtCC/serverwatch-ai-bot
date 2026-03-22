@@ -13,9 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import time
 import uuid
-from collections.abc import AsyncIterator
 from typing import cast
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Message, Update
@@ -35,12 +33,10 @@ from app.core.auth import restricted
 from app.core.config import get_config
 from app.services import glances, llm_router
 from app.utils.i18n import locale_from_update, t, text_matches_key
+from app.utils.streaming import StreamResult, stream_to_telegram, truncate_for_telegram
 
 logger = logging.getLogger("serverwatch")
 
-_STREAM_EDIT_INTERVAL_SECONDS = 0.8
-_STREAM_TYPING_INTERVAL_SECONDS = 4.0
-_TELEGRAM_MAX_TEXT_LENGTH = 4096
 _CB_CONTEXT_INFO = "ctx_info"
 _CB_CONTEXT_CLEAR = "ctx_clear"
 _CB_CONTEXT_CLOSE = "ctx_close"
@@ -207,12 +203,6 @@ def _parse_cancel_token(data: str) -> str | None:
     return token
 
 
-async def _next_stream_chunk(
-    stream_iter: AsyncIterator[llm_router.StreamChunk],
-) -> llm_router.StreamChunk:
-    return await anext(stream_iter)
-
-
 def _context_usage_text(locale: str, usage: store.ContextUsage) -> str:
     max_chars = max(1, usage.max_chars)
     percent = min(100, round((usage.used_chars / max_chars) * 100))
@@ -277,20 +267,6 @@ def _append_status_template(system_prompt: str, *, enabled: bool) -> str:
     if not enabled:
         return system_prompt
     return f"{system_prompt.rstrip()}\n\n{_STATUS_SOFT_TEMPLATE}"
-
-
-def _truncate_for_telegram(text: str) -> str:
-    if len(text) <= _TELEGRAM_MAX_TEXT_LENGTH:
-        return text
-    return text[: _TELEGRAM_MAX_TEXT_LENGTH - 1] + "…"
-
-
-def _thinking_preview_text(locale: str, thinking_text: str) -> str:
-    base = t("chat.thinking", locale=locale)
-    if not thinking_text.strip():
-        return base
-    # Keep the waiting state visible while appending streamed reasoning blocks.
-    return _truncate_for_telegram(f"{base}\n\n{thinking_text}")
 
 
 async def _safe_edit_or_reply(
@@ -418,104 +394,40 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             system_prompt = _SYSTEM_NO_METRICS.format(locale=locale)
 
     # Query LLM (streaming when supported by provider)
-    thinking_accumulated = ""
-    reply_accumulated = ""
-    last_pushed = ""
-    last_edit_at = 0.0
-    last_typing_at = time.monotonic()
-    stream_push_enabled = True
-    cancelled_by_user = False
     stream_keyboard = _chat_cancel_keyboard(locale, cancel_token) if cancel_token else None
-    stream_iter = llm_router.stream_chat_events(
-        selection,
-        system_prompt,
-        message.text,
-        history=history,
-    )
+    result: StreamResult | None = None
+
+    if placeholder is None:
+        # Placeholder unavailable — fall back to non-streaming.
+        try:
+            reply_text = await llm_router.chat(
+                selection, system_prompt, message.text, history=history
+            )
+        except Exception:
+            logger.exception("LLM chat request failed for provider=%s", provider)
+            return
+        final_reply = truncate_for_telegram(reply_text.strip() or t("chat.error", locale=locale))
+        await message.reply_text(final_reply, reply_markup=_context_entry_keyboard(locale))
+        await store.append_chat_context_message(chat_id, "user", message.text)
+        await store.append_chat_context_message(chat_id, "assistant", final_reply)
+        return
 
     try:
-        while True:
-            next_chunk_task: asyncio.Task[llm_router.StreamChunk] = asyncio.create_task(
-                _next_stream_chunk(stream_iter)
-            )
-            cancel_wait_task: asyncio.Task[bool] | None = None
-            wait_tasks: list[asyncio.Task[object]] = [cast(asyncio.Task[object], next_chunk_task)]
-            if cancel_event is not None:
-                cancel_wait_task = asyncio.create_task(cancel_event.wait())
-                wait_tasks.append(cast(asyncio.Task[object], cancel_wait_task))
+        result = await stream_to_telegram(
+            stream=llm_router.stream_chat_events(
+                selection,
+                system_prompt,
+                message.text,
+                history=history,
+            ),
+            placeholder=placeholder,
+            chat=chat,
+            cancel_event=cancel_event,
+            stream_keyboard=stream_keyboard,
+            thinking_label=t("chat.thinking", locale=locale),
+        )
 
-            done, pending = await asyncio.wait(
-                set(wait_tasks),
-                return_when=asyncio.FIRST_COMPLETED,
-            )
-
-            if (
-                cancel_wait_task is not None
-                and cancel_wait_task in done
-                and cancel_event is not None
-                and cancel_event.is_set()
-            ):
-                cancelled_by_user = True
-                next_chunk_task.cancel()
-                await asyncio.gather(next_chunk_task, return_exceptions=True)
-                break
-
-            if cancel_wait_task is not None:
-                cancel_wait_task.cancel()
-                await asyncio.gather(cancel_wait_task, return_exceptions=True)
-
-            for pending_task in pending:
-                pending_task.cancel()
-            if pending:
-                await asyncio.gather(*pending, return_exceptions=True)
-
-            try:
-                event = await next_chunk_task
-            except StopAsyncIteration:
-                break
-
-            if not event.text:
-                continue
-
-            if event.channel == "thinking":
-                thinking_accumulated += event.text
-            else:
-                reply_accumulated += event.text
-
-            # Without a placeholder we avoid sending many partial replies.
-            if placeholder is None:
-                continue
-
-            now = time.monotonic()
-            if reply_accumulated:
-                candidate = _truncate_for_telegram(reply_accumulated)
-            else:
-                candidate = _thinking_preview_text(locale, thinking_accumulated)
-
-            if (now - last_typing_at) >= _STREAM_TYPING_INTERVAL_SECONDS:
-                await chat.send_action(ChatAction.TYPING)
-                last_typing_at = now
-
-            if (
-                stream_push_enabled
-                and candidate != last_pushed
-                and (now - last_edit_at) >= _STREAM_EDIT_INTERVAL_SECONDS
-            ):
-                pushed = await _safe_edit_or_reply(
-                    source_message=message,
-                    placeholder=placeholder,
-                    text=candidate,
-                    reply_markup=stream_keyboard,
-                    allow_fallback_reply=False,
-                )
-                if pushed:
-                    last_pushed = candidate
-                    last_edit_at = now
-                else:
-                    # Avoid repeated partial fallback replies if placeholder edits keep failing.
-                    stream_push_enabled = False
-
-        if cancelled_by_user:
+        if result.cancelled:
             await _safe_edit_or_reply(
                 source_message=message,
                 placeholder=placeholder,
@@ -534,22 +446,26 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     finally:
         if cancel_token is not None:
             _chat_cancel_events(context).pop(cancel_token, None)
-        await stream_iter.aclose()
 
-    if not reply_accumulated.strip():
-        reply_accumulated = t("chat.error", locale=locale)
+    if not result.answer.strip():
+        result = StreamResult(
+            thinking=result.thinking,
+            answer=t("chat.error", locale=locale),
+            cancelled=False,
+            last_pushed_text=result.last_pushed_text,
+        )
 
-    final_reply = _truncate_for_telegram(reply_accumulated)
+    final_reply = truncate_for_telegram(result.answer)
     context_keyboard = _context_entry_keyboard(locale)
 
-    if final_reply != last_pushed or placeholder is None:
+    if final_reply != result.last_pushed_text:
         await _safe_edit_or_reply(
             source_message=message,
             placeholder=placeholder,
             text=final_reply,
             reply_markup=context_keyboard,
         )
-    elif placeholder is not None:
+    else:
         try:
             await placeholder.edit_reply_markup(reply_markup=context_keyboard)
         except BadRequest as exc:

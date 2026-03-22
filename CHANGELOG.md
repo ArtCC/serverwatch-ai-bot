@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Unified LLM streaming**: extracted the duplicated streaming loop from `chat.py` and `glances_menu.py` into a single `stream_to_telegram()` helper in `app/utils/streaming.py`. Edit interval reduced from 0.8 s to 0.3 s for a smoother *letter-by-letter* feel.
+- `StreamChunk` dataclass moved from `app/services/llm_router` to `app/utils/streaming` (re-exported from `llm_router` for backward compatibility).
 - **Glances data fetching**: replaced 21 individual endpoint requests with a single `GET /all` call plus `/all/limits` and 3 history endpoints. Reduces HTTP round-trips from 22 to 5 and guarantees temporal consistency across metrics.
 - **Enriched LLM context** (`as_llm_context_json`): payload now includes all containers (name/status/CPU/RAM/IO), all filesystem mounts, all active network interfaces with RX/TX rates, all sensors (label/value/unit/warning/critical), disk I/O rates, system info (hostname/OS/distro), and top 10 processes with full detail.
 - **ServerSnapshot** dataclass extended with `all_network_interfaces`, `all_containers`, `all_sensors`, `all_diskio`, and `system_info` fields.

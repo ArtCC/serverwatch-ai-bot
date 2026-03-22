@@ -13,6 +13,7 @@ import httpx
 from app.core.config import Config, get_config
 from app.core.store import split_model_selection
 from app.services import ollama
+from app.utils.streaming import StreamChunk
 
 _OPENAI_URL = "https://api.openai.com/v1/chat/completions"
 _OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
@@ -50,12 +51,6 @@ class ModelOption:
     selection: str
     provider: str
     model: str
-
-
-@dataclass(frozen=True)
-class StreamChunk:
-    channel: str
-    text: str
 
 
 ChatHistory = list[dict[str, str]]
