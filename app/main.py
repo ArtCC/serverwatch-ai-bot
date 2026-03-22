@@ -50,7 +50,7 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 
     # Handle RetryAfter (flood control) by waiting and notifying the user
     if isinstance(err, RetryAfter):
-        retry_seconds = err.retry_after
+        retry_seconds = float(err.retry_after)
         logger.warning("Flood control exceeded. Waiting %d seconds before retry.", retry_seconds)
         await asyncio.sleep(retry_seconds)
         # After waiting, don't send a message to avoid triggering another flood
@@ -75,7 +75,7 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
                 "Flood control during error reporting. Waiting %d seconds.",
                 retry_err.retry_after,
             )
-            await asyncio.sleep(retry_err.retry_after)
+            await asyncio.sleep(float(retry_err.retry_after))
 
 
 async def post_init(application: Application) -> None:

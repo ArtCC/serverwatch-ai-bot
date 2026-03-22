@@ -323,7 +323,7 @@ async def _safe_edit_or_reply(
                 "Flood control while editing placeholder. Waiting %d seconds.",
                 exc.retry_after,
             )
-            await asyncio.sleep(exc.retry_after)
+            await asyncio.sleep(float(exc.retry_after))
         except (TimedOut, NetworkError):
             logger.warning("Telegram timeout/network error while editing placeholder")
         except Exception:
