@@ -18,7 +18,7 @@ from typing import cast
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Message, Update
 from telegram.constants import ChatAction, ParseMode
-from telegram.error import BadRequest, NetworkError, TimedOut
+from telegram.error import BadRequest, NetworkError, RetryAfter, TimedOut
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -318,6 +318,12 @@ async def _safe_edit_or_reply(
             if "message is not modified" in str(exc).lower():
                 return True
             logger.warning("Could not edit placeholder message: %s", exc)
+        except RetryAfter as exc:
+            logger.warning(
+                "Flood control while editing placeholder. Waiting %d seconds.",
+                exc.retry_after,
+            )
+            await asyncio.sleep(exc.retry_after)
         except (TimedOut, NetworkError):
             logger.warning("Telegram timeout/network error while editing placeholder")
         except Exception:

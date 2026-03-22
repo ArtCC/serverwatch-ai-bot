@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.12] - 2026-03-22
+
+### Fixed
+
+- **Telegram flood control handling**: added `RetryAfter` exception handling in `streaming.py` (`_safe_edit`), `chat.py` (`_safe_edit_or_reply`), and the global `error_handler` in `main.py`. The bot now waits the required cooldown instead of silently dropping the operation or crashing with an unhandled exception.
+
+### Changed
+
+- **Streaming edit interval**: increased `DEFAULT_EDIT_INTERVAL` from 0.3 s to 1.0 s in `streaming.py` to reduce Telegram API pressure and avoid triggering rate limits during LLM streaming.
+
 ## [0.0.11] - 2026-03-22
 
 ### Added

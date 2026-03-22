@@ -15,12 +15,12 @@ from dataclasses import dataclass
 
 from telegram import InlineKeyboardMarkup, Message
 from telegram.constants import ChatAction
-from telegram.error import BadRequest, NetworkError, TimedOut
+from telegram.error import BadRequest, NetworkError, RetryAfter, TimedOut
 
 logger = logging.getLogger("serverwatch")
 
 _TELEGRAM_MAX_TEXT_LENGTH = 4096
-DEFAULT_EDIT_INTERVAL = 0.3
+DEFAULT_EDIT_INTERVAL = 1.0
 DEFAULT_TYPING_INTERVAL = 4.0
 
 
@@ -208,6 +208,13 @@ async def _safe_edit(
         if "message is not modified" in str(exc).lower():
             return True
         logger.warning("Could not edit streaming message: %s", exc)
+    except RetryAfter as exc:
+        logger.warning(
+            "Flood control during streaming edit. Waiting %d seconds.",
+            exc.retry_after,
+        )
+        await asyncio.sleep(exc.retry_after)
+        return True  # allow next edit cycle to proceed
     except (TimedOut, NetworkError):
         logger.warning("Telegram timeout/network error during streaming edit")
     except Exception:

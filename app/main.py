@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 
 import httpx
 from telegram import BotCommand, Update
 from telegram.constants import ParseMode
-from telegram.error import BadRequest, NetworkError, TimedOut
+from telegram.error import BadRequest, NetworkError, RetryAfter, TimedOut
 from telegram.ext import Application, CommandHandler, ContextTypes
 
 from app.core import store
@@ -46,6 +47,15 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
     """Global error handler — logs the exception and replies with a friendly message."""
     err = context.error
     logger.exception("Unhandled exception", exc_info=err)
+    
+    # Handle RetryAfter (flood control) by waiting and notifying the user
+    if isinstance(err, RetryAfter):
+        retry_seconds = err.retry_after
+        logger.warning("Flood control exceeded. Waiting %d seconds before retry.", retry_seconds)
+        await asyncio.sleep(retry_seconds)
+        # After waiting, don't send a message to avoid triggering another flood
+        return
+    
     if isinstance(update, Update) and update.effective_message:
         locale = locale_from_update(update, fallback=get_config().bot_locale)
         key = "errors.general"
@@ -54,10 +64,18 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
         elif isinstance(err, (TimedOut, NetworkError, httpx.TimeoutException, httpx.HTTPError)):
             key = "errors.service_unavailable"
 
-        await update.effective_message.reply_text(
-            t(key, locale=locale),
-            parse_mode=ParseMode.MARKDOWN,
-        )
+        try:
+            await update.effective_message.reply_text(
+                t(key, locale=locale),
+                parse_mode=ParseMode.MARKDOWN,
+            )
+        except RetryAfter as retry_err:
+            # If we get flood control when trying to report an error, just wait silently
+            logger.warning(
+                "Flood control during error reporting. Waiting %d seconds.",
+                retry_err.retry_after,
+            )
+            await asyncio.sleep(retry_err.retry_after)
 
 
 async def post_init(application: Application) -> None:

@@ -1,6 +1,6 @@
 [project]
 name = "serverwatch-ai-bot"
-version = "0.0.11"
+version = "0.0.12"
 description = "ServerWatch AI Bot"
 requires-python = ">=3.12"
 dependencies = [
