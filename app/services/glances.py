@@ -257,7 +257,7 @@ class ServerSnapshot:
             lines.append("")
             lines.append(t("status.top_processes", locale=locale))
             for proc in self.top_processes[:5]:
-                name = proc.get("name") or "?"
+                name = str(proc.get("name") or "?")
                 cpu_pct = _num(proc.get("cpu_percent", 0))
                 mem_pct = _num(proc.get("memory_percent", 0))
                 lines.append(f"  - {name} | CPU {cpu_pct:.1f}% | RAM {mem_pct:.1f}%")
