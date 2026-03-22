@@ -213,7 +213,9 @@ async def _safe_edit(
             "Flood control during streaming edit. Waiting %d seconds.",
             exc.retry_after,
         )
-        await asyncio.sleep(float(exc.retry_after))
+        await asyncio.sleep(
+            exc.retry_after if isinstance(exc.retry_after, int) else exc.retry_after.total_seconds()
+        )
         return True  # allow next edit cycle to proceed
     except (TimedOut, NetworkError):
         logger.warning("Telegram timeout/network error during streaming edit")
