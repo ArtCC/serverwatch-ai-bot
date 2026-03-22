@@ -178,148 +178,95 @@ def _pick_fields(source: dict[str, object], keys: tuple[str, ...]) -> dict[str, 
     return result
 
 
+_DICT_ENDPOINT_FIELDS: dict[str, tuple[str, ...]] = {
+    "cpu": ("total", "user", "system", "idle", "iowait", "irq", "softirq", "steal"),
+    "mem": (
+        "total",
+        "used",
+        "free",
+        "percent",
+        "available",
+        "active",
+        "inactive",
+        "cached",
+        "buffers",
+    ),
+    "load": ("min1", "min5", "min15", "cpucore"),
+    "system": ("hostname", "os_name", "os_version", "platform", "linux_distro", "hr_name"),
+}
+
+_LIST_ITEM_FIELDS: dict[str, tuple[str, ...]] = {
+    "fs": ("mnt_point", "device_name", "size", "used", "percent"),
+    "network": (
+        "interface_name",
+        "is_up",
+        "speed",
+        "time_since_update",
+        "bytes_recv_rate_per_sec",
+        "bytes_sent_rate_per_sec",
+        "bytes_all_rate_per_sec",
+        "bytes_recv_gauge",
+        "bytes_sent_gauge",
+    ),
+    "containers": (
+        "name",
+        "status",
+        "cpu_percent",
+        "memory_usage",
+        "memory_limit",
+        "io_rx",
+        "io_wx",
+        "network_rx",
+        "network_tx",
+    ),
+    "processlist": (
+        "name",
+        "pid",
+        "cpu_percent",
+        "memory_percent",
+        "status",
+        "username",
+        "num_threads",
+    ),
+    "sensors": ("label", "type", "value", "unit", "warning", "critical"),
+    "gpu": (
+        "name",
+        "id",
+        "gpu_id",
+        "mem",
+        "mem_used",
+        "mem_total",
+        "temperature",
+        "fan_speed",
+        "utilization",
+        "power_draw",
+    ),
+}
+
+
 def _prepare_llm_payload(key: str, payload: object) -> object:
     """Build a tiny endpoint-aware payload for faster summarization."""
     if isinstance(payload, dict):
-        if key == "cpu":
-            return _pick_fields(
-                payload,
-                (
-                    "total",
-                    "user",
-                    "system",
-                    "idle",
-                    "iowait",
-                    "irq",
-                    "softirq",
-                    "steal",
-                ),
-            )
-        if key == "mem":
-            return _pick_fields(
-                payload,
-                (
-                    "total",
-                    "used",
-                    "free",
-                    "percent",
-                    "available",
-                    "active",
-                    "inactive",
-                    "cached",
-                    "buffers",
-                ),
-            )
-        if key == "load":
-            return _pick_fields(payload, ("min1", "min5", "min15", "cpucore"))
-        if key == "system":
-            return _pick_fields(
-                payload,
-                (
-                    "hostname",
-                    "os_name",
-                    "os_version",
-                    "platform",
-                    "linux_distro",
-                    "hr_name",
-                ),
-            )
         if key == "uptime":
             return payload
+        fields = _DICT_ENDPOINT_FIELDS.get(key)
+        if fields:
+            return _pick_fields(payload, fields)
         return _compact_payload(payload, max_depth=2, max_dict_keys=15, max_list_items=6)
 
     if isinstance(payload, list):
-        items: list[object] = []
         max_items = 5
+        list_fields = _LIST_ITEM_FIELDS.get(key)
+        items: list[object] = []
         for item in payload[:max_items]:
             if not isinstance(item, dict):
                 items.append(_round_num(item))
-                continue
-
-            if key == "fs":
+            elif list_fields:
+                items.append(_pick_fields(item, list_fields))
+            else:
                 items.append(
-                    _pick_fields(item, ("mnt_point", "device_name", "size", "used", "percent"))
+                    _compact_payload(item, max_depth=2, max_dict_keys=12, max_list_items=4)
                 )
-                continue
-            if key == "network":
-                items.append(
-                    _pick_fields(
-                        item,
-                        (
-                            "interface_name",
-                            "is_up",
-                            "speed",
-                            "time_since_update",
-                            "bytes_recv_rate_per_sec",
-                            "bytes_sent_rate_per_sec",
-                            "bytes_all_rate_per_sec",
-                            "bytes_recv_gauge",
-                            "bytes_sent_gauge",
-                        ),
-                    )
-                )
-                continue
-            if key == "containers":
-                items.append(
-                    _pick_fields(
-                        item,
-                        (
-                            "name",
-                            "status",
-                            "cpu_percent",
-                            "memory_usage",
-                            "memory_limit",
-                            "io_rx",
-                            "io_wx",
-                            "network_rx",
-                            "network_tx",
-                        ),
-                    )
-                )
-                continue
-            if key == "processlist":
-                items.append(
-                    _pick_fields(
-                        item,
-                        (
-                            "name",
-                            "pid",
-                            "cpu_percent",
-                            "memory_percent",
-                            "status",
-                            "username",
-                            "num_threads",
-                        ),
-                    )
-                )
-                continue
-            if key == "sensors":
-                items.append(
-                    _pick_fields(item, ("label", "type", "value", "unit", "warning", "critical"))
-                )
-                continue
-            if key == "gpu":
-                items.append(
-                    _pick_fields(
-                        item,
-                        (
-                            "name",
-                            "id",
-                            "gpu_id",
-                            "mem",
-                            "mem_used",
-                            "mem_total",
-                            "temperature",
-                            "fan_speed",
-                            "utilization",
-                            "power_draw",
-                        ),
-                    )
-                )
-                continue
-
-            items.append(_compact_payload(item, max_depth=2, max_dict_keys=12, max_list_items=4))
-
         if len(payload) > max_items:
             items.append({"_truncated_items": len(payload) - max_items})
         return items

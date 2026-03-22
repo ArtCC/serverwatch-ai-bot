@@ -136,6 +136,7 @@ async def init_db() -> None:
 
     db = await _get_db()
     async with _db_lock:
+        await db.execute("PRAGMA journal_mode=WAL")
         await db.execute(
             """
             CREATE TABLE IF NOT EXISTS settings (
@@ -332,21 +333,6 @@ async def get_thresholds() -> tuple[float, float, float]:
         else cfg.alert_default_disk_threshold
     )
     return cpu, ram, disk
-
-
-async def get_threshold_cpu() -> float:
-    value = await _get(_KEY_CPU_THRESHOLD)
-    return float(value) if value is not None else get_config().alert_default_cpu_threshold
-
-
-async def get_threshold_ram() -> float:
-    value = await _get(_KEY_RAM_THRESHOLD)
-    return float(value) if value is not None else get_config().alert_default_ram_threshold
-
-
-async def get_threshold_disk() -> float:
-    value = await _get(_KEY_DISK_THRESHOLD)
-    return float(value) if value is not None else get_config().alert_default_disk_threshold
 
 
 async def set_threshold_cpu(value: float) -> None:

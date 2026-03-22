@@ -17,6 +17,7 @@ class Config:
     openai_model: str | None
     anthropic_api_key: str | None
     anthropic_model: str | None
+    anthropic_max_tokens: int
     deepseek_api_key: str | None
     deepseek_model: str | None
     bot_log_level: str
@@ -34,6 +35,34 @@ class Config:
     chat_context_max_chars: int
     chat_context_retention_messages: int
     tz: str
+
+    def __post_init__(self) -> None:
+        if self.glances_request_timeout_seconds <= 0:
+            raise ValueError("GLANCES_REQUEST_TIMEOUT_SECONDS must be > 0")
+        if self.alert_check_interval_seconds < 0:
+            raise ValueError("ALERT_CHECK_INTERVAL_SECONDS must be >= 0")
+        if self.alert_cooldown_seconds < 0:
+            raise ValueError("ALERT_COOLDOWN_SECONDS must be >= 0")
+        if not (0 <= self.alert_default_cpu_threshold <= 100):
+            raise ValueError("ALERT_DEFAULT_CPU_THRESHOLD must be between 0 and 100")
+        if not (0 <= self.alert_default_ram_threshold <= 100):
+            raise ValueError("ALERT_DEFAULT_RAM_THRESHOLD must be between 0 and 100")
+        if not (0 <= self.alert_default_disk_threshold <= 100):
+            raise ValueError("ALERT_DEFAULT_DISK_THRESHOLD must be between 0 and 100")
+        if self.alert_consecutive_breaches < 1:
+            raise ValueError("ALERT_CONSECUTIVE_BREACHES must be >= 1")
+        if not (0 <= self.alert_recovery_margin_percent <= 100):
+            raise ValueError("ALERT_RECOVERY_MARGIN_PERCENT must be between 0 and 100")
+        if self.alert_context_window_samples < 1:
+            raise ValueError("ALERT_CONTEXT_WINDOW_SAMPLES must be >= 1")
+        if self.chat_context_max_turns < 0:
+            raise ValueError("CHAT_CONTEXT_MAX_TURNS must be >= 0")
+        if self.chat_context_max_chars < 0:
+            raise ValueError("CHAT_CONTEXT_MAX_CHARS must be >= 0")
+        if self.chat_context_retention_messages < 1:
+            raise ValueError("CHAT_CONTEXT_RETENTION_MESSAGES must be >= 1")
+        if self.anthropic_max_tokens < 1:
+            raise ValueError("ANTHROPIC_MAX_TOKENS must be >= 1")
 
     @classmethod
     def from_env(cls) -> Config:
@@ -59,6 +88,7 @@ class Config:
             openai_model=_optional_env("OPENAI_MODEL"),
             anthropic_api_key=_optional_env("ANTHROPIC_API_KEY"),
             anthropic_model=_optional_env("ANTHROPIC_MODEL"),
+            anthropic_max_tokens=int(os.getenv("ANTHROPIC_MAX_TOKENS", "2048")),
             deepseek_api_key=_optional_env("DEEPSEEK_API_KEY"),
             deepseek_model=_optional_env("DEEPSEEK_MODEL"),
             bot_log_level=os.getenv("BOT_LOG_LEVEL", "INFO"),

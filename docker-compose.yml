@@ -17,6 +17,7 @@ services:
       OPENAI_MODEL: ${OPENAI_MODEL:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-}
+      ANTHROPIC_MAX_TOKENS: ${ANTHROPIC_MAX_TOKENS:-2048}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-}
       BOT_LOG_LEVEL: ${BOT_LOG_LEVEL:-INFO}
@@ -42,6 +43,12 @@ services:
       - ${DATA_PATH:-/opt/docker/serverwatch-ai-bot/data}:/app/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c 'import sys; sys.exit(0)'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
   # ─── Optional: Docker-based Glances ────────────────────────────────
   # Uncomment the block below if you prefer running Glances inside Docker

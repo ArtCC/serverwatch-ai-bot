@@ -68,9 +68,29 @@ app/
   core/        # Config, auth, store
   handlers/    # Telegram update handlers
   services/    # Glances, LLM routing and provider clients
-  utils/       # Formatting helpers, i18n
+    providers/ # Cloud LLM provider implementations (OpenAI, Anthropic, DeepSeek)
+  utils/       # i18n, streaming helpers
 locale/        # JSON locale files (en.json, ...)
 ```
+
+---
+
+## Architecture: Singleton + Lock Pattern
+
+Several modules use a **module-level singleton guarded by an `asyncio.Lock`** to manage shared resources safely across async tasks:
+
+| Module | Singleton | Lock |
+|---|---|---|
+| `core/store.py` | `_db` (SQLite connection) | `_db_lock` / `_db_init_lock` |
+| `services/providers/common.py` | `_http_client` (httpx) | `_http_client_lock` |
+| `core/config.py` | `_config` (Config) | — (sync, loaded once) |
+
+**Rules when working with this pattern:**
+
+1. Always acquire the lock before reading **or** writing the global.
+2. Use double-checked locking (check → lock → check again) for lazy init.
+3. Provide a `close_*()` coroutine that nullifies the global under the lock.
+4. In tests, patch the module-level global directly (e.g. `patch.object(store, "_db", conn)`) — never call `_get_db()` from tests.
 
 ---
 

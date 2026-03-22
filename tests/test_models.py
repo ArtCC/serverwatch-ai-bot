@@ -46,6 +46,7 @@ def test_configured_cloud_options_only_returns_fully_configured_providers() -> N
         openai_model="gpt-4o-mini",
         anthropic_api_key=None,
         anthropic_model="claude-3-5-sonnet-latest",
+        anthropic_max_tokens=2048,
         deepseek_api_key="deepseek-key",
         deepseek_model="deepseek-chat",
         bot_log_level="INFO",

@@ -6,6 +6,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 COPY pyproject.toml ./
+COPY app/__init__.py ./app/__init__.py
 RUN pip install --no-cache-dir --upgrade pip \
  && pip install --no-cache-dir .
 

@@ -113,33 +113,59 @@ _BUTTON_KEYS = (
 )
 
 _GLANCES_HINTS = (
+    # English
     "status",
-    "estado",
-    "nas",
     "server",
     "cpu",
     "ram",
     "mem",
-    "memoria",
     "swap",
     "disk",
-    "disco",
     "storage",
     "load",
     "network",
-    "red",
-    "latencia",
     "latency",
-    "proceso",
     "process",
     "docker",
     "container",
     "uptime",
-    "temperatura",
     "temperature",
     "bottleneck",
-    "rendimiento",
     "performance",
+    "nas",
+    # Spanish
+    "estado",
+    "memoria",
+    "disco",
+    "red",
+    "latencia",
+    "proceso",
+    "temperatura",
+    "rendimiento",
+    # French
+    "état",
+    "serveur",
+    "mémoire",
+    "disque",
+    "stockage",
+    "charge",
+    "réseau",
+    "processus",
+    "conteneur",
+    "performances",
+    # German
+    "zustand",
+    "speicher",
+    "festplatte",
+    "netzwerk",
+    "prozess",
+    "leistung",
+    # Italian
+    "stato",
+    "rete",
+    "processo",
+    "carico",
+    "prestazioni",
 )
 
 
@@ -312,6 +338,52 @@ async def _safe_edit_or_reply(
         return False
 
 
+async def _resolve_system_prompt(
+    *,
+    locale: str,
+    user_text: str,
+    selection: str,
+    provider: str,
+) -> str:
+    """Decide whether to fetch live metrics and build the appropriate system prompt."""
+    status_like = _is_status_like_request(user_text)
+    quick = _quick_glances_decision(user_text)
+
+    if quick is None:
+        if provider in {"openai", "anthropic", "deepseek"}:
+            use_glances = False
+        else:
+            use_glances = await _llm_should_use_glances(selection, user_text)
+    else:
+        use_glances = quick
+
+    try:
+        if use_glances:
+            snapshot = await glances.get_snapshot()
+            return _append_status_template(
+                _SYSTEM_WITH_METRICS.format(
+                    locale=locale,
+                    metrics_json=snapshot.as_llm_context_json(),
+                ),
+                enabled=status_like,
+            )
+        return _SYSTEM_NO_METRICS.format(locale=locale)
+    except Exception:
+        logger.warning("Could not fetch Glances snapshot for chat context")
+        if use_glances:
+            return _append_status_template(
+                _SYSTEM_METRICS_UNAVAILABLE.format(locale=locale),
+                enabled=status_like,
+            )
+        return _SYSTEM_NO_METRICS.format(locale=locale)
+
+
+async def _persist_exchange(chat_id: int, user_text: str, assistant_text: str) -> None:
+    """Persist user + assistant turns to chat context store."""
+    await store.append_chat_context_message(chat_id, "user", user_text)
+    await store.append_chat_context_message(chat_id, "assistant", assistant_text)
+
+
 @restricted
 async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.effective_message
@@ -351,8 +423,6 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if cancel_token is not None:
         cancel_event = _chat_cancel_events(context).get(cancel_token)
 
-    # Fetch metrics (non-blocking failure)
-    system_prompt: str
     history = await store.get_chat_context_window(
         chat_id,
         max_turns=cfg.chat_context_max_turns,
@@ -361,37 +431,12 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     selection = await store.get_active_model()
     provider, _, _ = selection.partition(":")
 
-    status_like_request = _is_status_like_request(message.text)
-    quick_decision = _quick_glances_decision(message.text)
-    if quick_decision is None:
-        if provider in {"openai", "anthropic", "deepseek"}:
-            # Cloud path optimization: skip routing LLM call when intent is ambiguous.
-            use_glances = False
-        else:
-            use_glances = await _llm_should_use_glances(selection, message.text)
-    else:
-        use_glances = quick_decision
-    try:
-        if use_glances:
-            snapshot = await glances.get_snapshot()
-            system_prompt = _append_status_template(
-                _SYSTEM_WITH_METRICS.format(
-                    locale=locale,
-                    metrics_json=snapshot.as_llm_context_json(),
-                ),
-                enabled=status_like_request,
-            )
-        else:
-            system_prompt = _SYSTEM_NO_METRICS.format(locale=locale)
-    except Exception:
-        logger.warning("Could not fetch Glances snapshot for chat context")
-        if use_glances:
-            system_prompt = _append_status_template(
-                _SYSTEM_METRICS_UNAVAILABLE.format(locale=locale),
-                enabled=status_like_request,
-            )
-        else:
-            system_prompt = _SYSTEM_NO_METRICS.format(locale=locale)
+    system_prompt = await _resolve_system_prompt(
+        locale=locale,
+        user_text=message.text,
+        selection=selection,
+        provider=provider,
+    )
 
     # Query LLM (streaming when supported by provider)
     stream_keyboard = _chat_cancel_keyboard(locale, cancel_token) if cancel_token else None
@@ -408,8 +453,7 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             return
         final_reply = truncate_for_telegram(reply_text.strip() or t("chat.error", locale=locale))
         await message.reply_text(final_reply, reply_markup=_context_entry_keyboard(locale))
-        await store.append_chat_context_message(chat_id, "user", message.text)
-        await store.append_chat_context_message(chat_id, "assistant", final_reply)
+        await _persist_exchange(chat_id, message.text, final_reply)
         return
 
     try:
@@ -476,8 +520,7 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         except Exception:
             logger.exception("Unexpected error while attaching context keyboard")
 
-    await store.append_chat_context_message(chat_id, "user", message.text)
-    await store.append_chat_context_message(chat_id, "assistant", final_reply)
+    await _persist_exchange(chat_id, message.text, final_reply)
 
 
 @restricted
