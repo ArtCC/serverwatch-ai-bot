@@ -47,7 +47,7 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
     """Global error handler — logs the exception and replies with a friendly message."""
     err = context.error
     logger.exception("Unhandled exception", exc_info=err)
-    
+
     # Handle RetryAfter (flood control) by waiting and notifying the user
     if isinstance(err, RetryAfter):
         retry_seconds = err.retry_after
@@ -55,7 +55,7 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
         await asyncio.sleep(retry_seconds)
         # After waiting, don't send a message to avoid triggering another flood
         return
-    
+
     if isinstance(update, Update) and update.effective_message:
         locale = locale_from_update(update, fallback=get_config().bot_locale)
         key = "errors.general"
